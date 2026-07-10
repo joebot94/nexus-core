@@ -33,9 +33,11 @@ Device-control code was instead re-homed conceptually from **joebot-lab**
   - `query_window {window: 1}` → `01` → state `window_1=1` (source: query), 17–19 ms
   - exercised from both curl and the built-in web client; WS event stream
     carried every result live
-- **Not yet fired live: `recall_preset`.** The mutating path is fully staged
-  and sim-verified (`2*48.` → `Rpr2*048`); firing it at the real wall is
-  deliberately left for an operator who can see the wall (house rule).
+- **2026-07-10 — first live mutating action, operator watching.**
+  `recall_preset {preset: 48}` → `2*48.` → ack `Rpr2*048`, 75 ms,
+  state `preset=48` (source: command_ack). The vertical slice is fully
+  live-verified end to end: normalized action → SIS translation → real
+  hardware → parsed ack → state store → WebSocket broadcast.
 
 ## Known limits (v1, by design)
 
