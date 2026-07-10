@@ -1,6 +1,26 @@
 # Nexus Core — Status (honest ledger)
 
-_Updated: 2026-07-10 (v0.2.0, M2 first wave)_
+_Updated: 2026-07-10 (v0.3.0, MTPX adapter)_
+
+## v0.3.0 — MTPX Plus adapter (the glitch technique)
+
+- **MTPX adapter** (`nexus/adapters/mtpx.py`): input RGB skew
+  `W{in}*{r}*{g}*{b}Iseq`, batch skew (many channels, ONE connection —
+  the performance path), reset skew, output peaking `W{out}*{0|1}Opek`,
+  universal preset recall — all **`verified=True`** (live-verified command
+  forms from GlitchBoard/MTPXControl). Crosspoint ties + `S` system status
+  are **`verified=False`** (doc-only, not bench-tested on these units).
+- **Best-effort batch transport** (`exchange_batch`): mirrors GlitchBoard's
+  verified `sendBatch` — a skew send SUCCEEDS when the write completes, even
+  if the MTPX (in no-response mode) stays silent. When it does echo, state is
+  upgraded from `inferred` to confirmed `command_ack`. A powered-off unit
+  (connect fails) correctly reports `ok:false`, never a fake success.
+- **Registry**: `device.mtpx.1` (1616 @ .15), `device.mtpx.2` (128 @ .16,
+  inputs 5-12 skewable), `device.mtpx.sim`. IPs flagged unconfirmed in notes.
+- **Web client** gained skew/reset controls automatically (capability-driven).
+- Verified in sim (single skew, 2-channel batch, peaking, preset, silent-
+  device inference, offline failure) — **not live**: both MTPX units are
+  powered off (probe of .15 → offline, as expected). 36 tests pass.
 
 ## 2026-07-10 — DEPLOYED TO THE NAS (M4 residency, first half)
 

@@ -3,6 +3,7 @@ from .dms3600 import DMS3600Adapter
 from .extron_sis import ExtronSISAdapter
 from .matrix12800 import Matrix12800Adapter
 from .mgp import MGP464Adapter
+from .mtpx import MTPXAdapter
 from .smx import SMXAdapter
 
 # Registry `type` field → adapter class. New device families register here.
@@ -15,8 +16,9 @@ ADAPTER_TYPES: dict[str, type[DeviceAdapter]] = {
     "matrix12800": Matrix12800Adapter,
     "smx": SMXAdapter,
     "dms3600": DMS3600Adapter,
+    "mtpx": MTPXAdapter,
 }
 
 __all__ = ["ActionResult", "ActionSpec", "DeviceAdapter", "UnsupportedAction",
            "ExtronSISAdapter", "MGP464Adapter", "Matrix12800Adapter", "SMXAdapter",
-           "DMS3600Adapter", "ADAPTER_TYPES"]
+           "DMS3600Adapter", "MTPXAdapter", "ADAPTER_TYPES"]

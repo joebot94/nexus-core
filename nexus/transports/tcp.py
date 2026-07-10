@@ -83,6 +83,51 @@ class TCPTransport:
             except Exception:
                 pass
 
+    async def exchange_batch(self, commands: list[str], terminator: str = "\r\n",
+                             drain: float = 0.3) -> TransportReply:
+        """Write several commands in ONE connection, then best-effort drain.
+
+        Mirrors GlitchBoard's verified sendBatch: success = the write completed.
+        A reply is NOT required — the MTPX in no-response mode stays silent, and
+        that is still a successful send. Whatever does echo back is returned
+        (concatenated) for diagnostics/confirmation. Raises only on connect
+        failure, never on silence.
+        """
+        if not commands:
+            return TransportReply(banner="", response="", raw=b"", latency_ms=0)
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(self.host, self.port), self.connect_timeout)
+        except (OSError, asyncio.TimeoutError) as exc:
+            raise TransportError(f"connect failed: {str(exc) or 'timed out / unreachable'}") from exc
+        try:
+            banner = await self._read_window(reader, self.banner_window)
+            prompt = banner.decode(errors="replace").lower()
+            for needle, credential in (("password", self.password or "admin"),
+                                       ("login", self.username or "admin")):
+                if needle in prompt:
+                    writer.write((credential + "\r").encode())
+                    await writer.drain()
+                    await self._read_window(reader, 0.4)
+            start = time.monotonic()
+            blob = "".join(c + terminator for c in commands)
+            writer.write(blob.encode())
+            await writer.drain()
+            echoed = await self._read_window(reader, drain)   # best-effort
+            latency = int((time.monotonic() - start) * 1000)
+            return TransportReply(
+                banner=banner.decode(errors="replace").strip(),
+                response=echoed.decode(errors="replace").strip(),
+                raw=echoed,
+                latency_ms=latency,
+            )
+        finally:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except Exception:
+                pass
+
     @staticmethod
     async def _read_window(reader: asyncio.StreamReader, window: float) -> bytes:
         """Best-effort read for a fixed window — some devices stay silent."""
@@ -135,5 +180,17 @@ class SimTransport:
             banner=self.simulator.banner,
             response=response,
             raw=(response + "\r\n").encode(),
+            latency_ms=5,
+        )
+
+    async def exchange_batch(self, commands: list[str], terminator: str = "\r\n",
+                             drain: float = 0.3) -> TransportReply:
+        await asyncio.sleep(0.005)
+        # Echo whatever the simulated device answers (some commands stay silent).
+        echoes = [r for r in (self.simulator.respond(c.strip()) for c in commands) if r]
+        return TransportReply(
+            banner=self.simulator.banner,
+            response="\r\n".join(echoes),
+            raw=("\r\n".join(echoes) + "\r\n").encode(),
             latency_ms=5,
         )

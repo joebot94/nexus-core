@@ -6,14 +6,15 @@
   queries live-verified; first live preset recall needs an operator watching)
 - ~~DMS 3600 adapter~~ ✅ v0.2.0 (unit offline)
 - ~~Generic `extron_sis` registry type + registry reload endpoint~~ ✅ v0.2.0
-- **MTPX Plus** adapter: verified forms `W{in}*{r}*{g}*{b}Iseq` (skew),
-  `W{out}*{0|1}Opek` (peaking), preset recall `N.`, CRLF-terminated;
-  doc-derived ties (`!/&/%/$`), tie reads (`{out}A/B/C`), mutes, `S` status
-  as `verified: false` until the units power on. Batch action (all channels,
-  one connection) — port of joebot-lab `/api/mtpx/batch` + GlitchBoard
-  `sendBatch`. Needs a multi-command write in the transport.
+- ~~MTPX Plus adapter (skew/batch/peaking/preset verified; ties + status
+  verified=false)~~ ✅ v0.3.0 (sim-verified; live fire pending power-on)
 - Logical groups/aliases (`/api/v1/groups` goes real): e.g. `group.wall`
-  fans one action to many targets.
+  fans one action to many targets. **← best next Opus-safe chunk.**
+- MTPX live-fire session when the units are powered: confirm IP, probe,
+  fire a blue-skew flash, verify the echo-confirmation path upgrades state
+  from inferred to command_ack. Then wire GlitchBoard's MTPX cues to route
+  their `W…Iseq` batch through Nexus (NexusBridge.action mapping + the
+  set_input_skew_batch action).
 - Query-backed state: adapters read skew/ties on probe so state starts
   `query`-sourced, not empty.
 - SMX live verification session (operator watching): `Rpr01` recall +

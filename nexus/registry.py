@@ -71,6 +71,43 @@ DEFAULT_DEVICES: list[dict[str, Any]] = [
         "simulate": False,
     },
     {
+        "device_id": "device.mtpx.1",
+        "type": "mtpx",
+        "label": "MTPX Plus 1616",
+        "host": "10.0.0.15",
+        "port": 23,
+        "location": "Rack 1",
+        "notes": "RGB skew unit — W{in}*{r}*{g}*{b}Iseq (verified via MTPXControl). "
+                 "IP UNCONFIRMED: NAS device list says .15, GlitchBoard has also seen "
+                 ".61/.172/.173. Powered off as of early July 2026 — confirm IP + power "
+                 "when firing skew. NAS API (status.joe.bot:8080) is a fallback route.",
+        "enabled": True,
+        "simulate": False,
+    },
+    {
+        "device_id": "device.mtpx.2",
+        "type": "mtpx",
+        "label": "MTPX Plus 128",
+        "host": "10.0.0.16",
+        "port": 23,
+        "location": "Rack 1",
+        "notes": "12x8 (model numbers are IN x OUT). Only inputs 5-12 accept skew; "
+                 "1-4 are VGA/analog pass-through. IP unconfirmed, powered off.",
+        "enabled": True,
+        "simulate": False,
+    },
+    {
+        "device_id": "device.mtpx.sim",
+        "type": "mtpx",
+        "label": "MTPX Plus (simulated)",
+        "host": "sim",
+        "port": 23,
+        "location": "Nowhere",
+        "notes": "Simulation-mode MTPX. Exercises the skew/peaking/batch path without hardware.",
+        "enabled": True,
+        "simulate": True,
+    },
+    {
         "device_id": "device.mgp.sim",
         "type": "mgp464",
         "label": "MGP 464 (simulated)",

@@ -110,6 +110,13 @@ class DeviceAdapter:
                 if value not in rules["enum"]:
                     raise InvalidParams(
                         f"parameter '{name}' must be one of: {', '.join(rules['enum'])}")
+            elif rules.get("type") == "list":
+                # Pass a list through; the handler validates each item (used for
+                # batch actions like MTPX multi-channel skew).
+                if not isinstance(value, list):
+                    raise InvalidParams(f"parameter '{name}' must be a list")
+                if rules.get("required") and not value:
+                    raise InvalidParams(f"parameter '{name}' must not be empty")
             clean[name] = value
         unknown = set(params) - set(spec.params)
         if unknown:

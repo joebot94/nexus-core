@@ -148,6 +148,18 @@ async function buildCard(d) {
     b.onclick = () => act(result, d.device_id, "query_tie", {output: +n.value});
     row.append(n, b);
   }
+  if (actions.has("set_input_skew")) {
+    const inp = el(`<input type="number" value="3" min="1" max="16" title="input">`);
+    const r = el(`<input type="number" value="0" min="0" max="31" title="red">`);
+    const g = el(`<input type="number" value="0" min="0" max="31" title="green">`);
+    const bl = el(`<input type="number" value="31" min="0" max="31" title="blue">`);
+    const b = el(`<button>Set Skew (R/G/B)</button>`);
+    b.onclick = () => act(result, d.device_id, "set_input_skew",
+      {input: +inp.value, r: +r.value, g: +g.value, b: +bl.value});
+    const reset = el(`<button>Reset Skew</button>`);
+    reset.onclick = () => act(result, d.device_id, "reset_input_skew", {input: +inp.value});
+    row.append(inp, r, g, bl, b, reset);
+  }
   return {root, dot: root.querySelector(".dot"), status: root.querySelector(".st")};
 }
 
