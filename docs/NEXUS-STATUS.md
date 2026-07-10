@@ -1,0 +1,47 @@
+# Nexus Core — Status (honest ledger)
+
+_Updated: 2026-07-10 (v0.1.0, M0+M1)_
+
+## Verdict on the prior Python Nexus
+
+**Superseded as a codebase, retained as a design.** The old
+`joebot-ecosystem/nexus` was an app-to-app message bus with zero device
+control (adapters were explicitly deferred in its build prompt and never
+happened). Its concepts — registry, capabilities, event recording, scenes —
+inform this service; its coordination features return in a later milestone.
+Device-control code was instead re-homed conceptually from **joebot-lab**
+(the NAS dashboard) and from GlitchBoard's live-verified wire work.
+
+## What works, real vs simulated
+
+| Piece | Status |
+|---|---|
+| REST /api/v1 (health, devices, state, capabilities, probe, actions, events, raw) | **Real**, integration-tested |
+| WebSocket event stream | **Real**, exercised by the built-in web client |
+| `.jbt` registry bootstrap + rolling event log | **Real** |
+| Token auth (`NEXUS_TOKEN`) | **Real**, tested; disabled by default on trusted LAN |
+| TCP SIS transport (CR out / CRLF in / banner drain) | **Real** — tested against a fake SIS device over real sockets; semantics ported from the TCPTransport.swift that was verified on the live MGP |
+| MGP 464 adapter: `recall_preset` (`2*NN.`→`Rpr2*NNN.`), `route_input_to_window`, `query_window`, `query_firmware` | **Real commands, live-verified syntax** (July 2026 GlitchBoard sessions) |
+| `device.mgp.sim` | **Simulated** (same adapter + API path, SimTransport only) |
+| Live rig verification | Probe (`Q`) against MGP @ 10.0.0.63 — see below |
+
+## Live hardware log
+
+- **2026-07-10 — first live contact through the full stack.** MGP 464 Pro DI
+  @ 10.0.0.63:23, via `POST /probe` and `POST /actions`:
+  - probe: online, model "MGP 464 Pro DI" parsed from banner, fw 1.12, 16 ms
+  - `query_window {window: 1}` → `01` → state `window_1=1` (source: query), 17–19 ms
+  - exercised from both curl and the built-in web client; WS event stream
+    carried every result live
+- **Not yet fired live: `recall_preset`.** The mutating path is fully staged
+  and sim-verified (`2*48.` → `Rpr2*048`); firing it at the real wall is
+  deliberately left for an operator who can see the wall (house rule).
+
+## Known limits (v1, by design)
+
+- One-shot connect-per-command (~40–70 ms vs live MGP). Pooling = M4.
+- No polling loop — state updates only from acks/probes/queries.
+- No unsolicited-response listening (needs persistent connections, M4).
+- Groups endpoint returns `[]` (shape reserved, lands M2).
+- Coordination plane (app registration, intents, scenes, recording) not
+  started — later milestone, per the locked plan.

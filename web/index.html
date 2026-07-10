@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nexus Core 🦖</title>
+<style>
+  /* Joebot Classic — dark grey, orange accents */
+  :root {
+    --bg: #1C1C1E; --surface: #2C2C2E; --accent: #FF6600; --text: #FFFFFF;
+    --text2: #888888; --border: #3C3C3E; --ok: #34C759; --bad: #FF453A;
+    --warn: #FFD60A; --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.45 -apple-system, "Helvetica Neue", sans-serif; }
+  header { display: flex; align-items: baseline; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--border); }
+  header h1 { font-size: 17px; letter-spacing: 2px; }
+  header h1 span { color: var(--accent); }
+  header small { color: var(--text2); font-family: var(--mono); }
+  #conn { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--text2); }
+  #conn.live { color: var(--ok); }
+  main { display: grid; grid-template-columns: 1fr 380px; gap: 16px; padding: 16px 20px; max-width: 1200px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+  .card h2 { font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text2); flex: none; }
+  .dot.online { background: var(--ok); } .dot.offline { background: var(--bad); }
+  .meta { color: var(--text2); font-family: var(--mono); font-size: 11.5px; margin: 4px 0 10px; }
+  .tag { font-size: 10px; border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; color: var(--warn); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+  button { background: transparent; border: 1px solid var(--accent); color: var(--accent); border-radius: 6px;
+           padding: 5px 12px; font: 600 12px/1 inherit; cursor: pointer; }
+  button:hover { background: var(--accent); color: #000; }
+  button:disabled { opacity: .4; cursor: default; }
+  input[type=number] { width: 64px; background: var(--bg); color: var(--text); border: 1px solid var(--border);
+           border-radius: 6px; padding: 5px 8px; font-family: var(--mono); }
+  .result { font-family: var(--mono); font-size: 11.5px; color: var(--text2); margin-top: 8px; min-height: 15px; white-space: pre-wrap; }
+  .result.ok { color: var(--ok); } .result.err { color: var(--bad); }
+  #feed { font-family: var(--mono); font-size: 11px; overflow-y: auto; max-height: 70vh; }
+  #feed div { padding: 4px 0; border-bottom: 1px solid var(--border); color: var(--text2); }
+  #feed div b { color: var(--text); font-weight: 500; }
+  #feed div.err b { color: var(--bad); }
+  aside h2 { font-size: 12px; letter-spacing: 1.5px; color: var(--text2); margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>NEXUS <span>CORE</span> 🦖</h1>
+  <small id="version"></small>
+  <span id="conn">ws: connecting…</span>
+</header>
+<main>
+  <section id="devices"></section>
+  <aside>
+    <h2>EVENT STREAM</h2>
+    <div id="feed" class="card"></div>
+  </aside>
+</main>
+<script>
+const api = (path, opts) => fetch("/api/v1" + path, opts).then(r => r.json());
+
+function el(html) {
+  const t = document.createElement("template");
+  t.innerHTML = html.trim();
+  return t.content.firstChild;
+}
+
+function showResult(node, res) {
+  const ok = res.ok !== false;
+  node.className = "result " + (ok ? "ok" : "err");
+  const bits = [];
+  if (res.response) bits.push("← " + res.response);
+  if (res.error) bits.push("✗ " + res.error);
+  if (res.state && Object.keys(res.state).length)
+    bits.push(Object.entries(res.state).map(([k, v]) => `${k}=${JSON.stringify(v && v.value !== undefined ? v.value : v)}`).join("  "));
+  if (res.latency_ms !== undefined) bits.push(res.latency_ms + "ms");
+  node.textContent = bits.join("   ") || (ok ? "ok" : "failed");
+}
+
+async function act(node, target, action, parameters) {
+  node.textContent = "…";
+  node.className = "result";
+  try {
+    const r = await fetch("/api/v1/actions", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({target, action, parameters})
+    });
+    showResult(node, await r.json());
+  } catch (e) { showResult(node, {ok: false, error: String(e)}); }
+  refreshDevices();
+}
+
+let deviceCards = {};
+async function refreshDevices() {
+  const devices = await api("/devices");
+  for (const d of devices) {
+    let card = deviceCards[d.device_id];
+    if (!card) {
+      card = buildCard(d);
+      deviceCards[d.device_id] = card;
+      document.getElementById("devices").appendChild(card.root);
+    }
+    card.dot.className = "dot " + d.status;
+    card.status.textContent = `${d.host}:${d.port} · ${d.status}` + (d.last_seen ? ` · seen ${d.last_seen.slice(11,19)}Z` : "");
+  }
+}
+
+function buildCard(d) {
+  const root = el(`<div class="card">
+    <h2><span class="dot"></span>${d.label || d.device_id}
+        ${d.simulated ? '<span class="tag">SIM</span>' : ''}</h2>
+    <div class="meta">${d.device_id} · <span class="st"></span></div>
+    <div class="row">
+      <button class="probe">Probe</button>
+      <input type="number" class="preset" value="48" min="1" max="128">
+      <button class="recall">Recall Preset</button>
+      <input type="number" class="win" value="1" min="1" max="4">
+      <button class="qwin">Query Window</button>
+    </div>
+    <div class="result"></div>
+  </div>`);
+  const result = root.querySelector(".result");
+  root.querySelector(".probe").onclick = async () => {
+    result.textContent = "…";
+    const r = await api(`/devices/${d.device_id}/probe`, {method: "POST"});
+    showResult(result, r);
+    refreshDevices();
+  };
+  root.querySelector(".recall").onclick = () =>
+    act(result, d.device_id, "recall_preset", {preset: +root.querySelector(".preset").value});
+  root.querySelector(".qwin").onclick = () =>
+    act(result, d.device_id, "query_window", {window: +root.querySelector(".win").value});
+  return {root, dot: root.querySelector(".dot"), status: root.querySelector(".st")};
+}
+
+function connectWS() {
+  const conn = document.getElementById("conn");
+  const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/api/v1/ws");
+  ws.onopen = () => { conn.textContent = "ws: live"; conn.className = "live"; };
+  ws.onclose = () => { conn.textContent = "ws: reconnecting…"; conn.className = ""; setTimeout(connectWS, 2000); };
+  ws.onmessage = (msg) => {
+    const data = JSON.parse(msg.data);
+    if (data.type !== "event") return;
+    const e = data.event;
+    const feed = document.getElementById("feed");
+    const line = el(`<div class="${e.summary.includes("FAILED") || e.summary.includes("unreachable") ? "err" : ""}">` +
+      `${e.timestamp.slice(11, 23)} <b></b></div>`);
+    line.querySelector("b").textContent = e.summary;
+    feed.prepend(line);
+    while (feed.children.length > 200) feed.lastChild.remove();
+  };
+}
+
+api("/health").then(h => document.getElementById("version").textContent = "v" + h.version);
+refreshDevices();
+connectWS();
+</script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+# Nexus Core on the NAS — sibling container to joebot-lab (which owns 8080).
+# host networking so the container can reach rack devices on 10.0.0.x directly.
+services:
+  nexus-core:
+    build: .
+    container_name: nexus-core
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      NEXUS_PORT: "8675"          # Jenny 📞
+      NEXUS_DATA_DIR: /data
+      # NEXUS_TOKEN: set-me-for-lan-auth
+    volumes:
+      - ./data:/data              # device_registry.jbt + rolling event log persist here
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
