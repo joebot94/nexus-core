@@ -44,6 +44,28 @@ docker compose up -d --build     # host networking, persists ./data
 
 See [docs/NEXUS-DEPLOYMENT.md](docs/NEXUS-DEPLOYMENT.md) for the Synology steps.
 
+## Why a new repo (and what happened to the old Nexus)
+
+The original [`joebot94/nexus`](https://github.com/joebot94/nexus) is an
+**app-to-app WebSocket message bus** — registration, heartbeats, intents,
+scenes, session recording. It was built exactly to its Phase-1 prompt, which
+explicitly deferred hardware adapters to "a future session." That session
+never happened, so the old Nexus never spoke to a single device.
+
+Meanwhile the actual device-control code grew up elsewhere: the
+**joebot-lab** NAS dashboard proved the SIS transports and polling, and
+**GlitchBoard** live-verified the wire protocols against the real rack
+(MGP `2*NN.` preset recall, MTPX `W…Iseq` skew, CR/CRLF framing, banner
+formats, idle timeouts).
+
+Nexus Core is the deliberate merge of those threads: the *vision* of the
+old Nexus ("apps speak Nexus, Nexus speaks hardware"), the *protocol truth*
+from the live-verified July 2026 work, and a clean device-plane-first
+codebase built for headless NAS Docker duty. The old repo stays as-is —
+its coordination features (scenes, intents, session recording) return here
+as a later milestone. Full lineage table and the protocol truth hierarchy:
+[docs/NEXUS-ARCHITECTURE.md](docs/NEXUS-ARCHITECTURE.md).
+
 ## Docs
 
 | Doc | What |
