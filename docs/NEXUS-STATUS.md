@@ -2,6 +2,16 @@
 
 _Updated: 2026-07-10 (v0.2.0, M2 first wave)_
 
+## 2026-07-10 — DEPLOYED TO THE NAS (M4 residency, first half)
+
+Nexus Core runs headless in Docker on the NAS at **nas.joe.bot:8675**
+(10.0.0.2, aarch64, host networking, `restart: unless-stopped`, healthy).
+Verified from the Mac: health via IP and domain, then NAS-resident probes of
+the live rack — MGP online 12 ms, **SMX online 1 ms**. Registry + event log
+persist in `/volume1/docker/nexus-core/data/`. Deploy recipe (tar-over-ssh —
+the NAS rsync is restricted) is in NEXUS-DEPLOYMENT.md. Remaining M4 half:
+persistent connection pooling + unsolicited-response listening.
+
 ## v0.2.0 — M2 first wave
 
 - **Three-client day**: the same MGP was driven via curl, the desktop

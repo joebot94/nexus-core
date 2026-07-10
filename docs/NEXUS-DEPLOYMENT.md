@@ -27,27 +27,34 @@ directly (same pattern as joebot-lab). `./data` holds the registry and the
 rolling event log — **that directory is the backup unit**: copy it off, and
 restoring it onto a fresh checkout restores the deployment.
 
-## Synology NAS (10.0.0.2)
+## NAS (10.0.0.2 / nas.joe.bot) — DEPLOYED 2026-07-10
 
-Same pattern as joebot-lab (which owns port 8080; Nexus takes 8675 — no clash):
+Live at **http://nas.joe.bot:8675/** (joebot-lab keeps 8080 — no clash).
+The box is aarch64 with Docker 26 + Compose v2.26; user `joe` is in the
+`docker` group, so no sudo needed. **The NAS's rsync is a restricted
+daemon wrapper ("invalid path") — deploy with tar-over-ssh instead:**
 
-1. Copy the repo to the NAS, e.g. `/volume1/docker/nexus-core/`
-   (`rsync -a --exclude .venv --exclude data ./ joe@10.0.0.2:/volume1/docker/nexus-core/`).
-2. On the NAS: `cd /volume1/docker/nexus-core && sudo docker compose up -d --build`.
-3. Verify: `curl -s http://10.0.0.2:8675/api/v1/health` and open
-   `http://status.joe.bot:8675/` for the test client.
-4. Set `NEXUS_TOKEN` in `docker-compose.yml` before exposing beyond the LAN.
-5. Edit devices in `/volume1/docker/nexus-core/data/jbt/device_registry.jbt`,
-   then `sudo docker compose restart nexus-core`.
+```bash
+# from the repo root on the Mac — this IS the deploy script
+tar czf - --exclude .venv --exclude data --exclude .git \
+    --exclude __pycache__ --exclude .pytest_cache . \
+  | ssh joe@10.0.0.2 'cd /volume1/docker/nexus-core && tar xzf -'
+ssh joe@10.0.0.2 'cd /volume1/docker/nexus-core && docker compose up -d --build'
+curl -s http://nas.joe.bot:8675/api/v1/health
+```
 
-Healthcheck is built into the image; `restart: unless-stopped` +
-size-capped json logs are in the compose file.
+First-time only: `ssh joe@10.0.0.2 'mkdir /volume1/docker/nexus-core'`.
+
+- Registry lives at `/volume1/docker/nexus-core/data/jbt/device_registry.jbt`
+  (bootstrapped on first start). Edit it, then
+  `curl -X POST http://nas.joe.bot:8675/api/v1/registry/reload` — no restart.
+- Point clients (GlitchBoard's "Nexus API" devices, the iPad) at
+  Host `nas.joe.bot`, Port `8675`.
+- Set `NEXUS_TOKEN` in `docker-compose.yml` before exposing beyond the LAN.
+- Healthcheck is built into the image; `restart: unless-stopped` +
+  size-capped json logs are in the compose file, so it survives NAS reboots.
 
 ## Upgrades
 
-```bash
-git pull            # or rsync the new tree
-docker compose up -d --build
-```
-
-`data/` is a volume — registry and event log survive rebuilds.
+Re-run the tar + `docker compose up -d --build` pair above.
+`data/` is outside the image — registry and event log survive rebuilds.
