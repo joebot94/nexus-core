@@ -84,6 +84,27 @@ async def test_raw_endpoint_is_guarded(client):
 
 
 @pytest.mark.asyncio
+async def test_registry_reload_picks_up_new_device(client, tmp_path):
+    import json
+    path = tmp_path / "jbt" / "device_registry.jbt"
+    doc = json.loads(path.read_text())
+    doc["payload"]["devices"].append({
+        "device_id": "device.new.1", "type": "extron_sis",
+        "label": "Fresh Box", "host": "sim", "simulate": True})
+    doc["payload"]["devices"].append({
+        "device_id": "device.broken.1", "type": "flux_capacitor"})
+    path.write_text(json.dumps(doc))
+
+    r = await client.post("/api/v1/registry/reload")
+    body = r.json()
+    assert body["ok"]
+    assert len(body["warnings"]) == 1 and "flux_capacitor" in body["warnings"][0]
+    r = await client.post("/api/v1/actions", json={
+        "target": "device.new.1", "action": "recall_preset", "parameters": {"preset": 5}})
+    assert r.json()["ok"] and r.json()["state"] == {"preset": 5}
+
+
+@pytest.mark.asyncio
 async def test_token_auth_when_configured(tmp_path, monkeypatch):
     monkeypatch.setenv("NEXUS_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("NEXUS_SIMULATE", "1")

@@ -41,9 +41,12 @@ async def event_stream(websocket: WebSocket):
 
     tasks = [asyncio.create_task(pump_events()), asyncio.create_task(pump_client())]
     try:
-        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-        for task in pending:
-            task.cancel()
+        done, _pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for task in done:
+            # Consume the disconnect exception so asyncio doesn't log
+            # "exception was never retrieved" for a normal client close.
+            with contextlib.suppress(Exception):
+                task.exception()
     except WebSocketDisconnect:
         pass
     finally:

@@ -1,6 +1,30 @@
 # Nexus Core — Status (honest ledger)
 
-_Updated: 2026-07-10 (v0.1.0, M0+M1)_
+_Updated: 2026-07-10 (v0.2.0, M2 first wave)_
+
+## v0.2.0 — M2 first wave
+
+- **Three-client day**: the same MGP was driven via curl, the desktop
+  GlitchBoard "Nexus API" connection type, and the ported iPad GlitchBoard
+  (preset 52 from the iPad, 2026-07-10 19:58 in the event log) — none of
+  them speaking SIS.
+- **New adapters**: Matrix 12800 (tie/untie/query per deployed lab code),
+  SMX (RprNN presets — the family exception —, plane ties `PP*in*out&/$`),
+  DMS 3600 (36×24 ties), and generic **`extron_sis`** so any Extron box can
+  join with just a registry entry.
+- **Transport handles login prompts** (Matrix/SMX may ask; answers like the
+  lab's handshake, admin/admin fallback).
+- **`POST /api/v1/registry/reload`** — add devices without a restart;
+  malformed/unknown entries skip with warnings instead of crashing.
+- **Web client is capability-driven** — buttons come from `/capabilities`,
+  so new device types get working controls with zero client changes.
+- **Live rack sweep (read-only, 2026-07-10 ~23:00)**: MGP online (fw 1.12);
+  **SMX @ 10.0.0.11 is BACK ONLINE** (fw 1.20, 3–5ms) — live tie queries
+  verified on planes 00/02/04 (input 5 → output 1); Matrix 12800 and
+  DMS 3600 currently unreachable (marked offline honestly). No mutating
+  command was sent — operator wasn't watching the rack.
+- SMX preset recall + ties and Matrix/DMS actions are **wire-verified against
+  deployed lab code but not yet live-fired** (SMX presets change routing!).
 
 ## Verdict on the prior Python Nexus
 

@@ -33,6 +33,44 @@ DEFAULT_DEVICES: list[dict[str, Any]] = [
         "simulate": False,
     },
     {
+        "device_id": "device.matrix.main",
+        "type": "matrix12800",
+        "label": "Matrix 12800",
+        "host": "10.0.0.12",
+        "port": 23,
+        "location": "Rack 1",
+        "password": "admin",
+        "notes": "128x128. Wire syntax from deployed joebot-lab matrix12800_control.py. "
+                 "May prompt for a password on connect.",
+        "enabled": True,
+        "simulate": False,
+    },
+    {
+        "device_id": "device.dms.main",
+        "type": "dms3600",
+        "label": "DMS 3600",
+        "host": "10.0.0.13",
+        "port": 23,
+        "location": "Rack 1",
+        "notes": "36x24. Wire syntax from deployed joebot-lab dms_control.py. "
+                 "Primary PSU unplugged — runs on redundant (degraded is normal).",
+        "enabled": True,
+        "simulate": False,
+    },
+    {
+        "device_id": "device.smx.main",
+        "type": "smx",
+        "label": "SMX System Matrix",
+        "host": "10.0.0.11",
+        "port": 23,
+        "location": "Rack 1",
+        "notes": "16x16, four planes (00 VGA / 01 S-Video / 02 Video / 04 Audio). "
+                 "Preset recall is RprNN, NOT the universal N. — verified via joebot-lab. "
+                 "Was unreachable on the LAN as of early July 2026.",
+        "enabled": True,
+        "simulate": False,
+    },
+    {
         "device_id": "device.mgp.sim",
         "type": "mgp464",
         "label": "MGP 464 (simulated)",
@@ -56,6 +94,10 @@ class DeviceConfig(BaseModel):
     notes: str = ""
     enabled: bool = True
     simulate: bool = False
+    # Some Extron boxes prompt on connect; the transport answers with these
+    # (falling back to admin/admin, matching the lab's handshake).
+    username: str = ""
+    password: str = ""
 
 
 @dataclass
@@ -76,29 +118,43 @@ class Registry:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self._entries: dict[str, DeviceEntry] = {}
-        self.load()
+        self.load_warnings: list[str] = self.load()
 
-    def load(self) -> None:
+    def load(self) -> list[str]:
+        """(Re)load the registry. A malformed or unknown-type entry never takes
+        the service down — it's skipped and reported in the returned warnings,
+        so hand-editing the .jbt stays a safe way to add devices."""
         path = self.settings.registry_path
         if not path.exists():
             doc = jbt.new("nexus_device_registry", {"devices": DEFAULT_DEVICES},
                           name="Joebot Studio Device Registry")
             jbt.save(path, doc)
         doc = jbt.load(path)
+        warnings: list[str] = []
         self._entries.clear()
         for raw in doc["payload"].get("devices", []):
-            config = DeviceConfig(**raw)
+            try:
+                config = DeviceConfig(**raw)
+            except Exception as exc:
+                warnings.append(f"skipped malformed device entry "
+                                f"{raw.get('device_id', '?')!r}: {exc}")
+                continue
             adapter_cls = ADAPTER_TYPES.get(config.type)
             if adapter_cls is None:
-                continue  # unknown device types are skipped gracefully, .jbt style
+                warnings.append(f"skipped {config.device_id}: unknown type "
+                                f"{config.type!r} (known: {', '.join(sorted(ADAPTER_TYPES))})")
+                continue
             simulated = config.simulate or self.settings.simulate_all
             if simulated:
                 transport = SimTransport(adapter_cls.Simulator())
             else:
-                transport = TCPTransport(config.host, config.port)
+                transport = TCPTransport(config.host, config.port,
+                                         username=config.username,
+                                         password=config.password)
             adapter = adapter_cls(config, transport)
             self._entries[config.device_id] = DeviceEntry(
                 config=config, adapter=adapter, simulated=simulated)
+        return warnings
 
     def get(self, device_id: str) -> DeviceEntry | None:
         return self._entries.get(device_id)

@@ -1,18 +1,23 @@
 # Nexus Core — Next
 
 ## M2 — More adapters + groups
+- ~~Matrix 12800 adapter~~ ✅ v0.2.0 (live fire pending — unit offline)
+- ~~SMX adapter with plane ties + RprNN presets~~ ✅ v0.2.0 (probe + tie
+  queries live-verified; first live preset recall needs an operator watching)
+- ~~DMS 3600 adapter~~ ✅ v0.2.0 (unit offline)
+- ~~Generic `extron_sis` registry type + registry reload endpoint~~ ✅ v0.2.0
 - **MTPX Plus** adapter: verified forms `W{in}*{r}*{g}*{b}Iseq` (skew),
   `W{out}*{0|1}Opek` (peaking), preset recall `N.`, CRLF-terminated;
   doc-derived ties (`!/&/%/$`), tie reads (`{out}A/B/C`), mutes, `S` status
   as `verified: false` until the units power on. Batch action (all channels,
   one connection) — port of joebot-lab `/api/mtpx/batch` + GlitchBoard
-  `sendBatch`.
-- **Matrix 12800** adapter; **SMX** adapter with 4-plane ties
-  (`{plane}*{in}*{out}!`, planes 00/01/02/04) per verified smx_control.py.
+  `sendBatch`. Needs a multi-command write in the transport.
 - Logical groups/aliases (`/api/v1/groups` goes real): e.g. `group.wall`
   fans one action to many targets.
 - Query-backed state: adapters read skew/ties on probe so state starts
   `query`-sourced, not empty.
+- SMX live verification session (operator watching): `Rpr01` recall +
+  plane tie + auto-switch cross-check with the lab dashboard.
 
 ## M3 — GlitchBoard integration
 - New connection type `"Nexus"` in Rig Config: one client file

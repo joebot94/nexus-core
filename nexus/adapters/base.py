@@ -105,6 +105,11 @@ class DeviceAdapter:
                 lo, hi = rules.get("range", (None, None))
                 if lo is not None and not (lo <= value <= hi):
                     raise InvalidParams(f"parameter '{name}' must be in range {lo}-{hi}")
+            elif "enum" in rules:
+                value = str(value)
+                if value not in rules["enum"]:
+                    raise InvalidParams(
+                        f"parameter '{name}' must be one of: {', '.join(rules['enum'])}")
             clean[name] = value
         unknown = set(params) - set(spec.params)
         if unknown:

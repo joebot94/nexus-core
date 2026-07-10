@@ -44,6 +44,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ctx.events.emit("nexus", "nexus-core",
                         f"🦖 Nexus Core v{VERSION} up — {len(devices)} device(s) loaded, "
                         f"{sum(1 for d in devices if d.simulated)} simulated")
+        for warning in ctx.registry.load_warnings:
+            ctx.events.emit("nexus", "nexus-core", f"registry warning: {warning}")
         yield
         ctx.events.emit("nexus", "nexus-core", "Nexus Core shutting down")
         ctx.events.flush()

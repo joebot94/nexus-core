@@ -17,6 +17,7 @@ healthchecks; the WebSocket takes `?token=…`).
 | POST | `/api/v1/devices/{id}/probe` | read-only reachability/identity check (safe `Q`) |
 | GET | `/api/v1/groups` | logical groups (shape stable, lands M2) |
 | POST | `/api/v1/actions` | **the integration path** — dispatch a normalized action |
+| POST | `/api/v1/registry/reload` | re-read device_registry.jbt without a restart |
 | POST | `/api/v1/devices/{id}/raw` | guarded diagnostics (`confirm_raw: true` required, logged) |
 | GET | `/api/v1/events?limit=100` | recent event history |
 | WS | `/api/v1/ws` | live events: `device_status`, `action_result`, `raw_command` |

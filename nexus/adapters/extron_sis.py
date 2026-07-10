@@ -85,15 +85,38 @@ class ExtronSISAdapter(DeviceAdapter):
         return result
 
     async def probe(self) -> ActionResult:
-        """Read-only identity check — the same safe `Q` GlitchBoard Phase 1 used."""
+        """Read-only identity check — the same safe `Q` GlitchBoard Phase 1 used.
+        Any reply (even an E-code) proves the device is online; only silence or
+        a transport failure counts as offline."""
         try:
             reply = await self.transport.exchange("Q")
         except TransportError as exc:
             return ActionResult(ok=False, error=str(exc))
-        state = {"firmware": reply.response}
+        state = {}
+        if not _ERROR_RE.match(reply.response):
+            state["firmware"] = reply.response
         banner_match = _BANNER_MODEL_RE.search(reply.banner)
         if banner_match:
             state["model"] = banner_match.group(1).strip()
         result = ActionResult(ok=True, response=reply.response, latency_ms=reply.latency_ms)
         result.state = state
         return result
+
+    class Simulator(DeviceAdapter.Simulator):
+        """Generic Extron SIS box: universal preset recall + identity queries.
+        Lets ANY Extron device join the registry as type `extron_sis` before it
+        has a dedicated adapter."""
+        banner = "(c) Copyright 2024, Extron Electronics, SIS Device, V1.00, 60-0000-01"
+
+        def __init__(self) -> None:
+            self.preset = 0
+
+        def respond(self, command: str) -> str:
+            if command == "Q":
+                return "1.00"
+            if command == "N":
+                return "60-0000-01"
+            if match := re.fullmatch(r"(\d{1,3})\.", command):
+                self.preset = int(match.group(1))
+                return f"Rpr{self.preset:02d}"
+            return "E10"

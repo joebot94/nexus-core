@@ -164,6 +164,20 @@ async def raw_command(request: Request, device_id: str, body: RawRequest):
             "error": result.error, "latency_ms": result.latency_ms}
 
 
+@router.post("/registry/reload", dependencies=[Depends(require_token)])
+def reload_registry(request: Request):
+    """Re-read device_registry.jbt without restarting — edit the file, hit this,
+    and the new device is live. State for existing devices is retained."""
+    ctx = _ctx(request)
+    warnings = ctx.registry.load()
+    devices = ctx.registry.all()
+    ctx.events.emit("nexus", "nexus-core",
+                    f"registry reloaded — {len(devices)} device(s)"
+                    + (f", {len(warnings)} skipped" if warnings else ""),
+                    {"warnings": warnings})
+    return {"ok": True, "devices": len(devices), "warnings": warnings}
+
+
 @router.get("/events", dependencies=[Depends(require_token)])
 def list_events(request: Request, limit: int = 100):
     return _ctx(request).events.recent(min(max(limit, 1), 1000))

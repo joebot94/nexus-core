@@ -96,7 +96,7 @@ async function refreshDevices() {
   for (const d of devices) {
     let card = deviceCards[d.device_id];
     if (!card) {
-      card = buildCard(d);
+      card = await buildCard(d);
       deviceCards[d.device_id] = card;
       document.getElementById("devices").appendChild(card.root);
     }
@@ -105,31 +105,49 @@ async function refreshDevices() {
   }
 }
 
-function buildCard(d) {
+// Controls come from the device's own /capabilities — a new adapter type gets
+// working buttons here with zero client changes.
+async function buildCard(d) {
+  const caps = await api(`/devices/${d.device_id}/capabilities`);
+  const actions = new Set(caps.actions.map(a => a.action));
   const root = el(`<div class="card">
     <h2><span class="dot"></span>${d.label || d.device_id}
-        ${d.simulated ? '<span class="tag">SIM</span>' : ''}</h2>
+        ${d.simulated ? '<span class="tag">SIM</span>' : ''}
+        <span class="tag" style="color:var(--text2)">${caps.device_type}</span></h2>
     <div class="meta">${d.device_id} · <span class="st"></span></div>
-    <div class="row">
-      <button class="probe">Probe</button>
-      <input type="number" class="preset" value="48" min="1" max="128">
-      <button class="recall">Recall Preset</button>
-      <input type="number" class="win" value="1" min="1" max="4">
-      <button class="qwin">Query Window</button>
-    </div>
+    <div class="row"></div>
     <div class="result"></div>
   </div>`);
+  const row = root.querySelector(".row");
   const result = root.querySelector(".result");
-  root.querySelector(".probe").onclick = async () => {
+
+  const probe = el(`<button>Probe</button>`);
+  probe.onclick = async () => {
     result.textContent = "…";
     const r = await api(`/devices/${d.device_id}/probe`, {method: "POST"});
     showResult(result, r);
     refreshDevices();
   };
-  root.querySelector(".recall").onclick = () =>
-    act(result, d.device_id, "recall_preset", {preset: +root.querySelector(".preset").value});
-  root.querySelector(".qwin").onclick = () =>
-    act(result, d.device_id, "query_window", {window: +root.querySelector(".win").value});
+  row.appendChild(probe);
+
+  if (actions.has("recall_preset")) {
+    const n = el(`<input type="number" value="48" min="1" max="128">`);
+    const b = el(`<button>Recall Preset</button>`);
+    b.onclick = () => act(result, d.device_id, "recall_preset", {preset: +n.value});
+    row.append(n, b);
+  }
+  if (actions.has("query_window")) {
+    const n = el(`<input type="number" value="1" min="1" max="4">`);
+    const b = el(`<button>Query Window</button>`);
+    b.onclick = () => act(result, d.device_id, "query_window", {window: +n.value});
+    row.append(n, b);
+  }
+  if (actions.has("query_tie")) {
+    const n = el(`<input type="number" value="1" min="1" max="128">`);
+    const b = el(`<button>Query Tie</button>`);
+    b.onclick = () => act(result, d.device_id, "query_tie", {output: +n.value});
+    row.append(n, b);
+  }
   return {root, dot: root.querySelector(".dot"), status: root.querySelector(".st")};
 }
 

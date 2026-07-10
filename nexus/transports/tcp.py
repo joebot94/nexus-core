@@ -34,23 +34,37 @@ class Transport(Protocol):
 
 
 class TCPTransport:
-    def __init__(self, host: str, port: int = 23, *, connect_timeout: float = 3.0,
-                 banner_window: float = 0.5, read_timeout: float = 2.0) -> None:
+    def __init__(self, host: str, port: int = 23, *, username: str = "", password: str = "",
+                 connect_timeout: float = 3.0, banner_window: float = 0.5,
+                 read_timeout: float = 2.0) -> None:
         self.host = host
         self.port = port
+        self.username = username
+        self.password = password
         self.connect_timeout = connect_timeout
         self.banner_window = banner_window
         self.read_timeout = read_timeout
 
     async def exchange(self, command: str, terminator: str = "\r") -> TransportReply:
-        """Open → drain banner → send one command → read one CRLF reply → close."""
+        """Open → drain banner (answering any login prompt) → send one command →
+        read one CRLF reply → close."""
         try:
             reader, writer = await asyncio.wait_for(
                 asyncio.open_connection(self.host, self.port), self.connect_timeout)
         except (OSError, asyncio.TimeoutError) as exc:
-            raise TransportError(f"connect failed: {exc or 'timed out'}") from exc
+            raise TransportError(f"connect failed: {str(exc) or 'timed out / unreachable'}") from exc
         try:
             banner = await self._read_window(reader, self.banner_window)
+            # Some Extron boxes (Matrix 12800, SMX) prompt before the banner.
+            # Mirrors the deployed joebot-lab _open() handshake.
+            prompt = banner.decode(errors="replace").lower()
+            for needle, credential in (("password", self.password or "admin"),
+                                       ("login", self.username or "admin")):
+                if needle in prompt:
+                    writer.write((credential + "\r").encode())
+                    await writer.drain()
+                    banner = await self._read_window(reader, 0.4)
+                    prompt = banner.decode(errors="replace").lower()
             start = time.monotonic()
             writer.write((command + terminator).encode())
             await writer.drain()
