@@ -65,11 +65,10 @@
   layout. The concrete first use-case for `/groups` + the coordination
   plane's scenes. Chaos modes (SMX scramble, MGP blank/freeze, everything-
   routes-everywhere) become deltas layered on the baseline.
-- **MTPX wall topology** — ~5× MTPX 128, ~3 signals each (one takes a 4th)
-  = 16 sources; loopback cascades stack skew past ±31; final out → matrix →
-  the right MGP. DNS plan `mtpx1-5.extron.video`; the registry should model
-  wall position so a graphical wall view can resolve placement → unit/lane/
-  cascade. GlitchBoard's MTPXTopology model is the client-side seed.
+- ~~MTPX wall topology — design + planner~~ ✅ v0.5.0: the logic is figured
+  out once in `docs/MTPX-WALL-DESIGN.md` + `nexus/wallplan.py` (pure,
+  tested). Remaining: the §7 bench pass (ties/save/loopback integrity),
+  registry wall-position metadata, and the graphical wall view on top.
 - **MIDI bridge (long-term)** — an Akai APC-class controller registered via
   a bridge agent (see Bridge agents above); MIDI-learn maps any control to
   any Nexus action; LED feedback pulses on beat.

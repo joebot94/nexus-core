@@ -34,6 +34,7 @@ from .extron_sis import ExtronSISAdapter
 _ISEQ_ECHO_RE = re.compile(r"Iseq\s*(\d+)\D+(\d+)\D+(\d+)\D+(\d+)")
 _OPEK_ECHO_RE = re.compile(r"Ope\s*(\d+)\D+(\d+)")
 _RPR_ECHO_RE = re.compile(r"Rpr\s*0*(\d+)")
+_SPR_ECHO_RE = re.compile(r"Spr\s*0*(\d+)")
 
 _SKEW = {"type": "int", "range": (0, 31), "required": True}
 
@@ -68,6 +69,13 @@ class MTPXAdapter(ExtronSISAdapter):
         "recall_preset": ActionSpec(
             summary="Recall preset N (universal Extron `N.`)",
             params={"preset": {"type": "int", "range": (1, 32), "required": True}},
+        ),
+        "save_preset": ActionSpec(
+            summary="SAVE current ties as preset N (`{N},` — comma, the opposite "
+                    "of recall's dot). Overwrites preset N; a saved tie set IS a "
+                    "lane configuration (wall design doc §1)",
+            params={"preset": {"type": "int", "range": (1, 32), "required": True}},
+            verified=False,
         ),
         "tie": ActionSpec(
             summary="Route input to output, all signal types (`{in}*{out}!`)",
@@ -148,6 +156,14 @@ class MTPXAdapter(ExtronSISAdapter):
             result.state_source = "command_ack" if confirmed else "inferred"
         return result
 
+    async def do_save_preset(self, preset: int) -> ActionResult:
+        result = await self._batch([f"{preset},"])
+        if result.ok:
+            echo = _SPR_ECHO_RE.search(result.response)
+            confirmed = echo and int(echo.group(1)) == preset
+            result.state_source = "command_ack" if confirmed else "inferred"
+        return result
+
     async def do_tie(self, input: int, output: int) -> ActionResult:
         result = await self._batch([f"{input}*{output}!"])
         if result.ok:
@@ -188,6 +204,11 @@ class MTPXAdapter(ExtronSISAdapter):
                     return "E01"
                 self.ties[out] = inp
                 return f"Out{out:02d} In{inp:02d} All"
+            if m := re.fullmatch(r"(\d{1,2}),", command):
+                n = int(m.group(1))
+                if not 1 <= n <= 32:
+                    return "E11"
+                return f"Spr{n:02d}"
             if command == "S":
                 return "+3.28 +4.98 -5.01 +11.52 -12.35 +86.88 03590 03668 03668"
             return super().respond(command)

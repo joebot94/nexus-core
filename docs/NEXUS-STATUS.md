@@ -134,3 +134,13 @@ Device-control code was instead re-homed conceptually from **joebot-lab**
 - Groups endpoint returns `[]` (shape reserved, lands M2).
 - Coordination plane (app registration, intents, scenes, recording) not
   started — later milestone, per the locked plan.
+
+## v0.5.0 (2026-07-11, local — NAS still runs v0.4.0)
+
+- **Wall cascade planner** (`nexus/wallplan.py` + `docs/MTPX-WALL-DESIGN.md`):
+  the "figure it out once" logic for the 5×MTPX-128 / 16-slot wall — port
+  budgets, loopback patch lists, per-unit tie sets, 12800 identity baseline,
+  skew distribution across passes. Pure planning; fires nothing; 9 tests.
+- **MTPX `save_preset`** (`{N},`) added, `verified=false` like `tie` — the
+  full ties→save→recall loop now exists in the API but the whole chain waits
+  on the design doc's §7 bench pass before anything fires at hardware.

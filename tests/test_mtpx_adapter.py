@@ -74,6 +74,18 @@ async def test_preset_recall_universal_form():
 
 
 @pytest.mark.asyncio
+async def test_preset_save_is_comma_not_dot():
+    """Save is `{N},` — the USP recall/save confusion in reverse. verified=False."""
+    adapter = _sim()
+    assert MTPXAdapter.actions["save_preset"].verified is False
+    result = await adapter.execute("save_preset", {"preset": 7})
+    assert result.ok
+    assert result.state_source == "command_ack"   # sim echoes Spr07
+    with pytest.raises(InvalidParams):
+        await adapter.execute("save_preset", {"preset": 33})
+
+
+@pytest.mark.asyncio
 async def test_silent_device_still_succeeds_but_infers():
     """A no-response-mode MTPX (empty echo) is a SUCCESS, state marked inferred."""
     class SilentSim(MTPXAdapter.Simulator):
