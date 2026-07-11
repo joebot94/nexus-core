@@ -51,6 +51,11 @@ First-time only: `ssh joe@10.0.0.2 'mkdir /volume1/docker/nexus-core'`.
 - Point clients (GlitchBoard's "Nexus API" devices, the iPad) at
   Host `nas.joe.bot`, Port `8675`.
 - Set `NEXUS_TOKEN` in `docker-compose.yml` before exposing beyond the LAN.
+- Nexus keeps a warm in-memory DMS snapshot for fast clients: routes and Lab
+  telemetry refresh every `NEXUS_CACHE_POLL_SECONDS` (default 10), while names
+  refresh every `NEXUS_NAME_CACHE_SECONDS` (default 300). This is read-only;
+  `data/` remains the persistent registry/log unit and cache is rebuilt after
+  restart.
 - Healthcheck is built into the image; `restart: unless-stopped` +
   size-capped json logs are in the compose file, so it survives NAS reboots.
 
