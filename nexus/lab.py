@@ -63,6 +63,29 @@ def normalize_device(record: dict[str, Any]) -> dict[str, Any]:
             "signals": signals,
         })
 
+    # Conventional DMS/Matrix-style devices publish one flat `signals` list
+    # rather than modular card boards. Normalize that as one logical all-signal
+    # plane so clients use the same input-presence code for both families.
+    # Do not manufacture this board when the list is absent: no sensor data is
+    # still unknown/unsupported, never an automatic red failure.
+    if not boards and isinstance(record.get("signals"), list):
+        signals = []
+        for signal in record["signals"]:
+            raw_state = str(signal.get("state", ""))
+            signals.append({
+                "channel": str(signal.get("label", "")),
+                "presence": _presence(raw_state),
+                "lab_state": raw_state,
+            })
+        boards.append({
+            "slot": None,
+            "plane": "all",
+            "label": "Matrix inputs",
+            "audio": False,
+            "port_count": len(signals),
+            "signals": signals,
+        })
+
     details = record.get("details", []) or []
     # Recent Lab versions use detail rows; older versions used a dict. Keep the
     # original shape available so an older NAS image is still useful.
