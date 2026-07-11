@@ -144,3 +144,31 @@ async def test_wall_plan_from_registry_metadata(client):
     assert body["mgp_assignment"]["r1c1"] == 1
     # One loopback cable per 2-pass lane.
     assert len(body["patch_list"]) == 4
+
+
+@pytest.mark.asyncio
+async def test_generate_wall_baseline_scene(client):
+    r = await client.post("/api/v1/wall/baseline-scene")
+    assert r.status_code == 200
+    scene = r.json()["scene"]
+    assert scene["id"] == "scene.wall-baseline"
+    actions = {s["action"] for s in scene["steps"]}
+    assert {"tie", "reset_input_skew", "recall_preset"} <= actions
+    # It's now listable and dry-runnable.
+    listed = await client.get("/api/v1/scenes")
+    assert any(s["id"] == "scene.wall-baseline" for s in listed.json())
+    dry = await client.post("/api/v1/scenes/scene.wall-baseline/recall?dry_run=true")
+    assert dry.json()["dry_run"] is True and len(dry.json()["steps"]) == len(scene["steps"])
+
+
+def test_build_wall_baseline_from_plan():
+    from nexus.scenes import build_wall_baseline_scene
+    from nexus.wallplan import plan_from_registry
+    plan = plan_from_registry([
+        {"name": "device.mtpx.1", "wall_model": "MTPX Plus 128",
+         "wall_slots": ["r1c1"], "wall_passes": 2}])
+    scene = build_wall_baseline_scene(plan)
+    # 2 ties + 2 skew-0 for the one 2-pass lane, + 1 matrix tie + 1 MGP preset.
+    kinds = [s.action for s in scene.steps]
+    assert kinds.count("tie") == 3 and kinds.count("reset_input_skew") == 2
+    assert kinds[-1] == "recall_preset"

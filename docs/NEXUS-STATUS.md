@@ -229,3 +229,14 @@ Device-control code was instead re-homed conceptually from **joebot-lab**
 - 7 new tests against a multi-connection sim that proves the fan-out (peak
   concurrent sockets, per-lane command spread, silent-burst success); 92 total.
   Live lane-count tuning is a bench item — 10 is Joe's MTPXControl figure.
+
+## v0.11.0 (2026-07-11, local — NAS still runs v0.4.0)
+
+- **Baseline scene generated from the wall plan** — `POST /wall/baseline-scene`
+  builds the "normal" baseline (per-lane MTPX ties + skew-0, Matrix identity
+  routing, MGP clean layout) straight from registry wall placement and saves it
+  as `scene.wall-baseline`. Ties the session together: wall planner (v0.5/0.9)
+  + scenes (v0.8) + lanes (v0.10) converge into one recallable, inspectable
+  baseline. MTPX tie/skew steps are verified=false so live recall stays
+  bench-gated; dry-run (`/scenes/{id}/recall?dry_run=true`) is always safe.
+  2 new tests; 95 total.

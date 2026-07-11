@@ -375,6 +375,38 @@ def wall_plan(request: Request):
     }
 
 
+@router.post("/wall/baseline-scene", dependencies=[Depends(require_token)])
+def generate_wall_baseline(request: Request):
+    """Generate the 'normal' baseline scene from the current wall plan (per-lane
+    MTPX ties + skew-0, Matrix identity routing, MGP clean layout) and save it
+    as `scene.wall-baseline`. Fires nothing — recall/dry-run it via /scenes.
+    MTPX steps are verified=false, so live recall stays bench-gated."""
+    from ..scenes import build_wall_baseline_scene
+    from ..wallplan import WallPlanError, plan_from_registry
+
+    ctx = _ctx(request)
+    units = [
+        {"name": e.config.device_id, "wall_model": e.config.wall_model,
+         "host": e.config.host, "wall_slots": e.config.wall_slots,
+         "wall_passes": e.config.wall_passes}
+        for e in ctx.registry.all()
+        if e.config.type == "mtpx" and e.config.wall_slots
+    ]
+    if not units:
+        raise HTTPException(422, "no MTPX devices carry wall_slots — configure "
+                                 "placement first (GET /wall/plan)")
+    try:
+        plan = plan_from_registry(units)
+    except WallPlanError as exc:
+        raise HTTPException(422, f"wall plan invalid: {exc}") from exc
+    scene = build_wall_baseline_scene(plan)
+    ctx.scenes.upsert_scene(scene)
+    ctx.events.emit("nexus", "nexus-core",
+                    f"generated {scene.id} — {len(scene.steps)} steps from wall plan")
+    return {"ok": True, "scene": scene.model_dump(),
+            "hint": "dry-run with POST /scenes/scene.wall-baseline/recall?dry_run=true"}
+
+
 @router.get("/scenes", dependencies=[Depends(require_token)])
 def list_scenes(request: Request):
     """Named, ordered cross-device recalls — the baseline + chaos deltas."""

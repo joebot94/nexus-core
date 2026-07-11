@@ -71,6 +71,44 @@ DEFAULT_SCENES: list[dict[str, Any]] = [
 ]
 
 
+def build_wall_baseline_scene(plan, *, matrix_target: str = "device.matrix.main",
+                              mgp_target: str = "device.mgp.1", mgp_preset: int = 48,
+                              scene_id: str = "scene.wall-baseline") -> Scene:
+    """Generate the "normal" baseline as a recallable scene straight from a
+    WallPlan: per-lane MTPX ties + skew-0, the Matrix identity routing, and the
+    MGP clean layout. This is the known-good reference all chaos deviates from.
+
+    The MTPX `tie`/`reset_input_skew` steps use verified=false actions, so a
+    live recall stays bench-gated (dry-run is always safe) — but the scene is
+    fully authored and inspectable now instead of hand-written later.
+    """
+    steps: list[SceneStep] = []
+    for lane in plan.lanes:
+        # Ties that form the lane's cascade (input i → output o per pass).
+        for inp, out in zip(lane.inputs, lane.outputs):
+            steps.append(SceneStep(target=lane.unit, action="tie",
+                                   parameters={"input": inp, "output": out},
+                                   note=f"{lane.slot} tie in{inp}→out{out}"))
+        # Clean skew on every skewable input this lane touches.
+        for inp in lane.inputs:
+            steps.append(SceneStep(target=lane.unit, action="reset_input_skew",
+                                   parameters={"input": inp},
+                                   note=f"{lane.slot} skew 0"))
+    # Matrix identity: each slot's final out → matrix input k → output k.
+    for k, lane in enumerate(plan.lanes, start=1):
+        steps.append(SceneStep(target=matrix_target, action="tie",
+                               parameters={"input": lane.matrix_input, "output": k},
+                               note=f"{lane.slot} → matrix out {k}"))
+    # MGP clean layout.
+    steps.append(SceneStep(target=mgp_target, action="recall_preset",
+                           parameters={"preset": mgp_preset}, note="MGP clean 2×2"))
+    return Scene(id=scene_id, label="Wall baseline (generated)",
+                 notes="Generated from the wall plan. MTPX tie/skew steps are "
+                       "verified=false — dry-run freely; live recall needs the "
+                       "bench pass (design doc §7).",
+                 steps=steps)
+
+
 class SceneStore:
     """Loads/persists groups + scenes and resolves them against the registry."""
 
