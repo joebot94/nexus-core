@@ -19,6 +19,13 @@ Policy, not heroics:
     NOT a failure and never triggers a retry — one-shot semantics preserved
   - keepalive is opt-in (`keepalive_s` > 0) and only maintains an already-
     open connection; it never dials a dark device in a loop
+  - make-before-break rotation is opt-in (`rotate_after_s` > 0): as the live
+    socket AGES past the threshold, a fresh standby is opened alongside it in
+    the background, and only once the standby is ready do we swap and close
+    the old one. Sends keep flowing on the live socket the whole time — the
+    hot path never waits on a connect, and no send races a device that closes
+    on total session lifetime rather than idle. Recycle/retry stay as the
+    reactive safety net beneath it.
 
 Drop-in: implements the same exchange / exchange_batch / exchange_sequence
 surface as TCPTransport, so adapters don't know which one they're on.
@@ -44,6 +51,7 @@ class PoolPolicy:
     idle_recycle_s: float = 280.0   # replace a socket idle past this (MGP ~310s)
     keepalive_s: float = 0.0        # 0 = off; else send keepalive_wire when idle
     keepalive_wire: str = "Q"       # read-only identity query, same as probe
+    rotate_after_s: float = 0.0     # 0 = off; else make-before-break at this age
     connect_timeout: float = 3.0
     banner_window: float = 0.5
     read_timeout: float = 2.0
@@ -78,16 +86,19 @@ class PooledTransport:
         # flight — front-panel changes, other sessions' echoes. Wired by the
         # app to adapter.parse_unsolicited → state store.
         self.on_unsolicited: Callable[[str], None] | None = None
-        self.stats = {"connects": 0, "recycles": 0, "retries": 0, "unsolicited": 0}
+        self.stats = {"connects": 0, "recycles": 0, "retries": 0,
+                      "rotations": 0, "unsolicited": 0}
         self._lock = asyncio.Lock()          # serializes all exchanges
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
         self._reader_task: asyncio.Task | None = None
         self._keepalive_task: asyncio.Task | None = None
+        self._rotation_task: asyncio.Task | None = None
         self._pending: _Waiter | None = None
         self._unsol = bytearray()
         self._banner = ""
-        self._last_activity = 0.0
+        self._last_activity = 0.0          # for idle recycle + keepalive
+        self._connect_time = 0.0           # for make-before-break rotation
 
     @property
     def connected(self) -> bool:
@@ -147,11 +158,13 @@ class PooledTransport:
             return await self._with_retry(run)
 
     async def aclose(self) -> None:
-        if self._keepalive_task is not None:
-            self._keepalive_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await self._keepalive_task
-            self._keepalive_task = None
+        for attr in ("_keepalive_task", "_rotation_task"):
+            task = getattr(self, attr)
+            if task is not None:
+                task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await task
+                setattr(self, attr, None)
         async with self._lock:
             await self._close_connection()
 
@@ -213,13 +226,22 @@ class PooledTransport:
             await self._connect()
 
     async def _connect(self) -> None:
+        self._install(*await self._open_socket())
+
+    async def _open_socket(self):
+        """Connect + complete the SIS handshake, but DON'T start a reader task.
+        Returns (reader, writer, banner) — ready to install as the primary or
+        parked as a warm standby during a make-before-break rotation. Raises
+        TransportError on connect failure. Touches no shared primary state, so
+        it is safe to run outside the lock while sends flow on the live socket.
+        """
         try:
             reader, writer = await asyncio.wait_for(
                 asyncio.open_connection(self.host, self.port), self.policy.connect_timeout)
         except (OSError, asyncio.TimeoutError) as exc:
             raise TransportError(
                 f"connect failed: {str(exc) or 'timed out / unreachable'}") from exc
-        # Handshake inline (reader task not running yet): banner + any prompt,
+        # Handshake inline (no reader task yet): banner + any login prompt,
         # identical to the one-shot transport's verified behavior.
         banner = await self._read_window(reader, self.policy.banner_window)
         prompt = banner.decode(errors="replace").lower()
@@ -230,13 +252,39 @@ class PooledTransport:
                 await writer.drain()
                 banner = await self._read_window(reader, 0.4)
                 prompt = banner.decode(errors="replace").lower()
+        return reader, writer, banner.decode(errors="replace").strip()
+
+    def _install(self, reader: asyncio.StreamReader,
+                 writer: asyncio.StreamWriter, banner: str) -> None:
+        """Adopt an opened socket as the live primary and start its reader."""
         self._reader, self._writer = reader, writer
-        self._banner = banner.decode(errors="replace").strip()
-        self._last_activity = time.monotonic()
+        self._banner = banner
+        now = time.monotonic()
+        self._last_activity = now
+        self._connect_time = now
         self.stats["connects"] += 1
         self._reader_task = asyncio.create_task(self._read_loop(reader, writer))
         if self.policy.keepalive_s > 0 and self._keepalive_task is None:
             self._keepalive_task = asyncio.create_task(self._keepalive_loop())
+        if self.policy.rotate_after_s > 0 and self._rotation_task is None:
+            self._rotation_task = asyncio.create_task(self._rotation_loop())
+
+    async def _promote(self, parts) -> None:
+        """Swap a pre-opened standby in as the primary and retire the old
+        socket. Caller holds the lock, so no exchange is in flight."""
+        old_task, old_writer = self._reader_task, self._writer
+        # Detach first so the old reader's teardown won't null the new refs.
+        self._reader_task = self._writer = self._reader = None
+        if old_task is not None:
+            old_task.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await old_task
+        if old_writer is not None:
+            old_writer.close()
+            with suppress(Exception):
+                await old_writer.wait_closed()
+        self._install(*parts)
+        self.stats["rotations"] += 1
 
     async def _close_connection(self) -> None:
         task, self._reader_task = self._reader_task, None
@@ -314,6 +362,43 @@ class PooledTransport:
                 continue
             with suppress(TransportError, Exception):
                 await self.exchange(self.policy.keepalive_wire)
+
+    async def _rotation_loop(self) -> None:
+        """Make-before-break. When the live socket ages past `rotate_after_s`,
+        open a standby OUTSIDE the lock (sends keep flowing on the current
+        socket), then take the lock and swap it in. We fire on the old socket
+        right up until the standby is ready, and the old one closes only after
+        the swap — so there is never a moment without a usable connection, and
+        no send is ever aimed at a socket about to hit its session deadline.
+
+        Age is time-since-connect, not idle time: keepalive holds an idle
+        socket open, but a device that closes on total session lifetime needs
+        rotating regardless of how busy it is. The reactive recycle/retry path
+        stays underneath as a safety net if a standby can't be opened in time.
+        """
+        check_every = max(0.05, min(self.policy.rotate_after_s / 4, 30.0))
+        while True:
+            await asyncio.sleep(check_every)
+            if self._writer is None:
+                continue
+            if (time.monotonic() - self._connect_time) < self.policy.rotate_after_s:
+                continue
+            try:
+                parts = await self._open_socket()   # standby, outside the lock
+            except TransportError:
+                continue                            # rack blip; retry next tick
+            async with self._lock:
+                still_aged = self._writer is not None and \
+                    (time.monotonic() - self._connect_time) >= self.policy.rotate_after_s
+                if still_aged:
+                    await self._promote(parts)
+                else:
+                    # Primary was recycled/replaced while we dialed — drop the
+                    # now-redundant standby rather than churn a fresh socket.
+                    _, writer, _ = parts
+                    writer.close()
+                    with suppress(Exception):
+                        await writer.wait_closed()
 
     @staticmethod
     async def _read_window(reader: asyncio.StreamReader, window: float) -> bytes:

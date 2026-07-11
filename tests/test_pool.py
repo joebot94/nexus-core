@@ -236,6 +236,60 @@ async def test_keepalive_touches_an_idle_open_socket(rack):
 
 
 @pytest.mark.asyncio
+async def test_rotation_make_before_break(rack):
+    """As the socket ages, a standby is opened and promoted proactively —
+    fresh sockets appear, exchanges never fail, and it never falls back to
+    the reactive self-close-race reconnect."""
+    # Short banner window so opening the standby is quick in the test; in
+    # production the 0.5s greeting wait is trivial against a 240s rotate age.
+    pool = _pool(rack, rotate_after_s=0.2, banner_window=0.05)
+    try:
+        for _ in range(16):
+            assert (await pool.exchange("Q")).response == "1.12"
+            await asyncio.sleep(0.05)
+        assert pool.stats["rotations"] >= 1     # standbys were promoted
+        assert rack.connects >= 2               # fresh sockets opened
+        assert pool.stats["retries"] == 0       # never the reactive path
+        assert pool.connected                   # a live primary the whole time
+    finally:
+        await pool.aclose()
+
+
+@pytest.mark.asyncio
+async def test_rotation_promotes_a_working_socket(rack):
+    """After a rotation the NEW socket is the one serving commands: kill the
+    original by counting sockets, then confirm sends still land."""
+    pool = _pool(rack, rotate_after_s=0.15, banner_window=0.05)
+    try:
+        await pool.exchange("Q")
+        await asyncio.sleep(0.55)               # at least one rotation
+        assert pool.stats["rotations"] >= 1
+        # The command lands on the promoted socket, and it's counted fresh.
+        assert (await pool.exchange("2*48.")).response == "Rpr2*048"
+        assert "2*48." in rack.commands
+    finally:
+        await pool.aclose()
+
+
+@pytest.mark.asyncio
+async def test_unsolicited_not_doubled_across_rotation(rack):
+    """Only the live primary's reader routes unsolicited lines; the brief
+    overlap window during a swap must not double-count a broadcast."""
+    pool = _pool(rack, rotate_after_s=0.2, banner_window=0.05)
+    heard: list[str] = []
+    pool.on_unsolicited = heard.append
+    try:
+        await pool.exchange("Q")
+        await asyncio.sleep(0.6)                 # let a rotation happen
+        assert pool.stats["rotations"] >= 1
+        await rack.volunteer("Rpr2*052")         # to every open socket
+        await asyncio.sleep(0.15)
+        assert heard.count("Rpr2*052") == 1
+    finally:
+        await pool.aclose()
+
+
+@pytest.mark.asyncio
 async def test_aclose_then_reuse_reconnects(rack):
     pool = _pool(rack)
     await pool.exchange("Q")

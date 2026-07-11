@@ -165,3 +165,18 @@ Device-control code was instead re-homed conceptually from **joebot-lab**
   socket latency, race handling, what it actually volunteers unsolicited)
   needs the operator session. NAS registry needs the `connection` field
   hot-edited (or registry reset) when v0.6.0 deploys.
+
+## v0.7.0 (2026-07-11, local — NAS still runs v0.4.0)
+
+- **Make-before-break socket rotation** (opt-in `rotate_after_s`): as the live
+  socket ages past the threshold, the pool opens a fresh standby ALONGSIDE it
+  in the background and swaps only once the standby is ready — sends keep
+  flowing on the current socket the whole time, so the hot path never waits on
+  a connect and no send races a device that closes on total session lifetime
+  (not just idle). Age is time-since-connect, complementing keepalive (idle).
+  The reactive recycle + retry-once path stays underneath as the safety net.
+  Only the live primary's reader routes unsolicited lines, so the brief
+  two-socket overlap never double-counts a broadcast. `rotations` stat added;
+  registry gains per-device `rotate_after_s` (default 0 = off). 3 new tests,
+  71 total. Off by default on the MGP (its idle self-close is already covered
+  by keepalive); enable per-device for gear that closes on session age.

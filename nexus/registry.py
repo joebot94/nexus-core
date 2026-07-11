@@ -152,6 +152,10 @@ class DeviceConfig(BaseModel):
     # …and, when > 0, keep an open socket warm by touching it at this idle
     # age (enables always-on unsolicited listening; 0 = off).
     keepalive_s: float = 0.0
+    # Make-before-break: when > 0, open a fresh standby socket and swap to it
+    # once the live one ages past this many seconds — no gap, no send racing a
+    # session-lifetime close. 0 = off (idle recycle + retry-once still apply).
+    rotate_after_s: float = 0.0
     # Physical topology and telemetry support. This is an explicit configured
     # fallback until the adapter has a live, read-only discovery command for
     # the particular model/card family. It lets every client draw only real,
@@ -214,7 +218,8 @@ class Registry:
                     config.host, config.port,
                     username=config.username, password=config.password,
                     policy=PoolPolicy(idle_recycle_s=config.idle_recycle_s,
-                                      keepalive_s=config.keepalive_s))
+                                      keepalive_s=config.keepalive_s,
+                                      rotate_after_s=config.rotate_after_s))
             else:
                 if config.connection != "oneshot":
                     warnings.append(f"{config.device_id}: unknown connection "
