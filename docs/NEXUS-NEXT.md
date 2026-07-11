@@ -8,8 +8,14 @@
 - ~~Generic `extron_sis` registry type + registry reload endpoint~~ ✅ v0.2.0
 - ~~MTPX Plus adapter (skew/batch/peaking/preset verified; ties + status
   verified=false)~~ ✅ v0.3.0 (sim-verified; live fire pending power-on)
-- Logical groups/aliases (`/api/v1/groups` goes real): e.g. `group.wall`
-  fans one action to many targets. **← best next Opus-safe chunk.**
+- ~~Logical groups/aliases (`/api/v1/groups` goes real)~~ ✅ v0.8.0 —
+  `nexus/scenes.py`: groups (`group.wall` fans one action to many) + **scenes**
+  (ordered cross-device recalls). `POST /groups/{id}/actions`, `GET/POST
+  /scenes`, `POST /scenes/{id}/recall` (+ `?dry_run=true` preview),
+  `/scenes/reload`. Baseline "normal" scene is scene #1; chaos modes are
+  delta scenes. Persisted in `scenes.jbt`, hand-editable like the registry.
+  Next: generate the baseline scene from a WallPlan once wall-position
+  metadata lands; author the MTPX/matrix/SMX baseline steps post-bench.
 - MTPX live-fire session when the units are powered: confirm IP, probe,
   fire a blue-skew flash, verify the echo-confirmation path upgrades state
   from inferred to command_ack. Then wire GlitchBoard's MTPX cues to route

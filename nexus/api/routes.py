@@ -11,7 +11,8 @@ from ..adapters.base import InvalidParams, UnsupportedAction
 from ..lab import DEFAULT_LAB_IDS, LabTelemetryError
 from ..registry import DeviceEntry
 from ..transports import PooledTransport
-from .models import ActionRequest, ActionResponse, DeviceOut, RawRequest
+from .models import (ActionRequest, ActionResponse, DeviceOut,
+                     GroupActionRequest, RawRequest)
 
 router = APIRouter(prefix="/api/v1")
 _started = time.monotonic()
@@ -261,20 +262,16 @@ async def probe_device(request: Request, device_id: str):
             "state": result.state, "error": result.error}
 
 
-@router.get("/groups", dependencies=[Depends(require_token)])
-def list_groups():
-    # Logical groups/aliases land in M2 — the endpoint shape is stable now.
-    return []
-
-
-@router.post("/actions", response_model=ActionResponse, dependencies=[Depends(require_token)])
-async def dispatch_action(request: Request, body: ActionRequest):
-    ctx = _ctx(request)
-    entry = _get_entry(request, body.target)
+async def _run_action(ctx, entry: DeviceEntry, action: str,
+                      parameters: dict) -> ActionResponse:
+    """Execute one normalized action on one device, updating state + events.
+    Shared by /actions, group fan-out, and scene recall so all three stay
+    identical in how they mark status, record state, and log. Raises the same
+    HTTPExceptions dispatch_action historically did."""
     if not entry.config.enabled:
-        raise HTTPException(409, f"device {body.target} is disabled")
+        raise HTTPException(409, f"device {entry.config.device_id} is disabled")
     try:
-        result = await entry.adapter.execute(body.action, body.parameters)
+        result = await entry.adapter.execute(action, parameters)
     except UnsupportedAction as exc:
         raise HTTPException(400, str(exc)) from exc
     except InvalidParams as exc:
@@ -284,19 +281,114 @@ async def dispatch_action(request: Request, body: ActionRequest):
     # transport marks it offline.
     entry.mark(result.ok or bool(result.response))
     if result.ok and result.state:
-        ctx.state.update(body.target, result.state, source=result.state_source)
+        ctx.state.update(entry.config.device_id, result.state, source=result.state_source)
 
-    label = entry.config.label or body.target
-    params = " ".join(f"{k}={v}" for k, v in body.parameters.items())
-    summary = (f"{label}: {body.action} {params} ✓".strip()
-               if result.ok else f"{label}: {body.action} {params} FAILED — {result.error}")
+    label = entry.config.label or entry.config.device_id
+    params = " ".join(f"{k}={v}" for k, v in parameters.items())
+    summary = (f"{label}: {action} {params} ✓".strip()
+               if result.ok else f"{label}: {action} {params} FAILED — {result.error}")
     response = ActionResponse(
-        ok=result.ok, target=body.target, action=body.action,
-        parameters=body.parameters, response=result.response,
+        ok=result.ok, target=entry.config.device_id, action=action,
+        parameters=parameters, response=result.response,
         error=result.error, latency_ms=result.latency_ms, state=result.state,
     )
-    ctx.events.emit("action_result", body.target, summary, response.model_dump())
+    ctx.events.emit("action_result", entry.config.device_id, summary, response.model_dump())
     return response
+
+
+@router.get("/groups", dependencies=[Depends(require_token)])
+def list_groups(request: Request):
+    """Named aliases for sets of device targets. Post one action to a group and
+    it fans out to every member (`POST /groups/{id}/actions`)."""
+    return [g.model_dump() for g in _ctx(request).scenes.groups.values()]
+
+
+@router.post("/groups/{group_id}/actions", dependencies=[Depends(require_token)])
+async def group_action(request: Request, group_id: str, body: GroupActionRequest):
+    """Fan one action out to every member of a group, in registry order.
+    Continues past a failing member and reports each; overall ok = all ok."""
+    ctx = _ctx(request)
+    targets = ctx.scenes.resolve_group(group_id)
+    if targets is None:
+        raise HTTPException(404, f"unknown group: {group_id}")
+    results = []
+    for device_id in targets:
+        entry = ctx.registry.get(device_id)
+        if entry is None:
+            results.append({"target": device_id, "ok": False,
+                            "error": "unknown device (not in registry)"})
+            continue
+        resp = await _run_action(ctx, entry, body.action, body.parameters)
+        results.append(resp.model_dump())
+    ok = bool(results) and all(r.get("ok") for r in results)
+    ctx.events.emit("group_action", group_id,
+                    f"group {group_id}: {body.action} → {len(results)} member(s) "
+                    + ("✓" if ok else "with failures"))
+    return {"ok": ok, "group": group_id, "action": body.action,
+            "parameters": body.parameters, "results": results}
+
+
+@router.get("/scenes", dependencies=[Depends(require_token)])
+def list_scenes(request: Request):
+    """Named, ordered cross-device recalls — the baseline + chaos deltas."""
+    return [s.model_dump() for s in _ctx(request).scenes.scenes.values()]
+
+
+@router.post("/scenes/{scene_id}/recall", dependencies=[Depends(require_token)])
+async def recall_scene(request: Request, scene_id: str, dry_run: bool = False):
+    """Run a scene's steps in order (expanding groups) through the same adapter
+    path a single action uses. `dry_run=true` resolves + validates the steps
+    and returns them without firing — the safe preview before a real recall.
+    Continues past a failing step; overall ok = all steps ok."""
+    ctx = _ctx(request)
+    scene = ctx.scenes.scenes.get(scene_id)
+    if scene is None:
+        raise HTTPException(404, f"unknown scene: {scene_id}")
+    steps = ctx.scenes.expand(scene)
+    known = {e.config.device_id for e in ctx.registry.all()}
+
+    if dry_run:
+        return {"ok": True, "scene": scene_id, "dry_run": True,
+                "steps": [{"target": s.target, "action": s.action,
+                           "parameters": s.parameters,
+                           "known_device": s.target in known} for s in steps]}
+
+    results = []
+    for step in steps:
+        entry = ctx.registry.get(step.target)
+        if entry is None:
+            results.append({"target": step.target, "ok": False,
+                            "error": "unknown device (not in registry)"})
+            continue
+        resp = await _run_action(ctx, entry, step.action, step.parameters)
+        results.append(resp.model_dump())
+    ok = bool(results) and all(r.get("ok") for r in results)
+    ctx.events.emit("scene_recall", scene_id,
+                    f"scene {scene_id} ({scene.label}): {len(results)} step(s) "
+                    + ("✓" if ok else "with failures"))
+    return {"ok": ok, "scene": scene_id, "label": scene.label, "results": results}
+
+
+@router.post("/scenes/reload", dependencies=[Depends(require_token)])
+def reload_scenes(request: Request):
+    """Re-read scenes.jbt without restarting — hand-edit + reload, like the
+    device registry."""
+    ctx = _ctx(request)
+    warnings = ctx.scenes.load()
+    ctx.events.emit("nexus", "nexus-core",
+                    f"scenes reloaded — {len(ctx.scenes.groups)} group(s), "
+                    f"{len(ctx.scenes.scenes)} scene(s)"
+                    + (f", {len(warnings)} skipped" if warnings else ""),
+                    {"warnings": warnings})
+    return {"ok": True, "groups": len(ctx.scenes.groups),
+            "scenes": len(ctx.scenes.scenes), "warnings": warnings}
+
+
+@router.post("/actions", response_model=ActionResponse, dependencies=[Depends(require_token)])
+async def dispatch_action(request: Request, body: ActionRequest):
+    ctx = _ctx(request)
+    entry = _get_entry(request, body.target)
+    return await _run_action(ctx, entry, body.action, body.parameters)
 
 
 @router.post("/devices/{device_id}/raw", dependencies=[Depends(require_token)])

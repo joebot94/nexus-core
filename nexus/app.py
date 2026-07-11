@@ -23,6 +23,7 @@ from .lab import LabTelemetryClient
 from .lab import DEFAULT_LAB_IDS, LabTelemetryError
 from .read_cache import ReadCache
 from .registry import Registry
+from .scenes import SceneStore
 from .state import StateStore
 from .transports import PooledTransport
 
@@ -37,6 +38,7 @@ class Context:
     events: EventBus
     lab: LabTelemetryClient
     read_cache: ReadCache
+    scenes: SceneStore
     # Set by create_app: (re)attach unsolicited-line handlers to every pooled
     # transport. Called at startup and after a registry reload.
     wire_pools: Callable[[], None] | None = None
@@ -51,6 +53,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         events=EventBus(settings.event_log_path),
         lab=LabTelemetryClient(settings.lab_url),
         read_cache=ReadCache(),
+        scenes=SceneStore(settings.scenes_path),
     )
 
     async def warm_read_cache() -> None:
@@ -128,6 +131,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         f"{sum(1 for d in devices if d.simulated)} simulated")
         for warning in ctx.registry.load_warnings:
             ctx.events.emit("nexus", "nexus-core", f"registry warning: {warning}")
+        for warning in ctx.scenes.load_warnings:
+            ctx.events.emit("nexus", "nexus-core", f"scenes warning: {warning}")
+        ctx.events.emit("nexus", "nexus-core",
+                        f"{len(ctx.scenes.groups)} group(s), {len(ctx.scenes.scenes)} scene(s) loaded")
         wire_pools()
         warm_task = asyncio.create_task(warm_read_cache())
         yield

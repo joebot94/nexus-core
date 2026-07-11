@@ -180,3 +180,22 @@ Device-control code was instead re-homed conceptually from **joebot-lab**
   registry gains per-device `rotate_after_s` (default 0 = off). 3 new tests,
   71 total. Off by default on the MGP (its idle self-close is already covered
   by keepalive); enable per-device for gear that closes on session age.
+
+## v0.8.0 (2026-07-11, local — NAS still runs v0.4.0)
+
+- **Groups + scenes** (`nexus/scenes.py`, the coordination plane's first real
+  slice). A **group** is a named alias for device targets; `POST
+  /groups/{id}/actions` fans one action to every member. A **scene** is a
+  named, ordered list of steps (each targeting a device OR a group) run in
+  order through the same adapter path a single action uses — the "normal"
+  baseline is `scene.baseline`, chaos modes become delta scenes.
+- `GET /groups`, `GET /scenes`, `POST /groups/{id}/actions`,
+  `POST /scenes/{id}/recall` (+ `?dry_run=true` resolves/validates without
+  firing), `POST /scenes/reload`. Persisted in `data/jbt/scenes.jbt`,
+  hand-editable + reloadable like the device registry; malformed entries skip
+  with a warning.
+- `/actions`, group fan-out, and scene recall all share one `_run_action`
+  helper so status-marking, state updates, and event logging are identical.
+- 11 new tests (store + API over sim devices); 82 total. Baseline scene
+  currently only carries the MGP clean-layout step; the MTPX/matrix/SMX steps
+  get authored (or WallPlan-generated) once they clear the bench pass.

@@ -34,5 +34,10 @@ class Settings:
         return Path(override).expanduser() if override else self.data_dir / "jbt" / "device_registry.jbt"
 
     @property
+    def scenes_path(self) -> Path:
+        override = os.environ.get("NEXUS_SCENES", "")
+        return Path(override).expanduser() if override else self.data_dir / "jbt" / "scenes.jbt"
+
+    @property
     def event_log_path(self) -> Path:
         return self.data_dir / "logs" / "nexus_rolling.jbt"

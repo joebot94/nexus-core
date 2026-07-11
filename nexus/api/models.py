@@ -31,6 +31,11 @@ class RawRequest(BaseModel):
                               description="must be true — raw access is diagnostics only")
 
 
+class GroupActionRequest(BaseModel):
+    action: str = Field(description="normalized action to fan out to every group member")
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
 class DeviceOut(BaseModel):
     device_id: str
     type: str
