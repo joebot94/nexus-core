@@ -120,6 +120,22 @@ async def test_raw_endpoint_is_guarded(client):
 
 
 @pytest.mark.asyncio
+async def test_route_bank_reads_plane_aware_smx(client):
+    """Regression: SMX writes plane_PP_output_N state keys — the route bank
+    must not return a silently empty result for plane-aware matrices."""
+    r = await client.post("/api/v1/actions", json={
+        "target": "device.smx.main", "action": "tie",
+        "parameters": {"input": 5, "output": 1, "plane": "00"}})
+    assert r.json()["ok"]
+    r = await client.get("/api/v1/devices/device.smx.main/routes?start=1&count=4&plane=00")
+    body = r.json()
+    assert body["ok"] and body["ties"]["1"] == 5
+    # And with no plane param the adapter's default plane still surfaces ties.
+    r = await client.get("/api/v1/devices/device.smx.main/routes?start=1&count=2")
+    assert r.json()["ties"]["1"] == 5
+
+
+@pytest.mark.asyncio
 async def test_registry_reload_picks_up_new_device(client, tmp_path):
     import json
     path = tmp_path / "jbt" / "device_registry.jbt"

@@ -190,7 +190,10 @@ async def read_route_bank(request: Request, device_id: str, start: int = 1, coun
     if not 1 <= count <= 32:
         raise HTTPException(422, "count must be in range 1-32")
     stop = min(outputs, start + count - 1)
-    cached = _ctx(request).read_cache.routes.get(device_id)
+    # Plane-aware devices (SMX) get their own cache slot per plane so VGA and
+    # Audio banks can't shadow each other.
+    cache_key = device_id if plane is None else f"{device_id}#{plane}"
+    cached = _ctx(request).read_cache.routes.get(cache_key)
     if cached is not None:
         wanted = {str(output): cached.value[output] for output in range(start, stop + 1)
                   if output in cached.value}
@@ -212,7 +215,13 @@ async def read_route_bank(request: Request, device_id: str, start: int = 1, coun
         except InvalidParams as exc:
             raise HTTPException(422, str(exc)) from exc
         entry.mark(result.ok or bool(result.response))
+        # Flat matrices report `output_N`; plane-aware adapters (SMX) report
+        # `plane_PP_output_N` (even for their default plane). Accept either so
+        # no device family returns a silently empty bank.
         input_value = result.state.get(f"output_{output}")
+        if input_value is None:
+            input_value = next((v for k, v in result.state.items()
+                                if k.endswith(f"output_{output}") and isinstance(v, int)), None)
         if result.ok and isinstance(input_value, int):
             ties[str(output)] = input_value
         elif not result.ok:
@@ -220,7 +229,7 @@ async def read_route_bank(request: Request, device_id: str, start: int = 1, coun
     if ties:
         cached_ties = dict(cached.value) if cached is not None else {}
         cached_ties.update({int(key): value for key, value in ties.items()})
-        _ctx(request).read_cache.put_routes(device_id, cached_ties)
+        _ctx(request).read_cache.put_routes(cache_key, cached_ties)
     return {
         "ok": not errors,
         "device_id": device_id,
