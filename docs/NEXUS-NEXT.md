@@ -81,8 +81,10 @@
   routes-everywhere) become deltas layered on the baseline.
 - ~~MTPX wall topology — design + planner~~ ✅ v0.5.0: the logic is figured
   out once in `docs/MTPX-WALL-DESIGN.md` + `nexus/wallplan.py` (pure,
-  tested). Remaining: the §7 bench pass (ties/save/loopback integrity),
-  registry wall-position metadata, and the graphical wall view on top.
+  tested). ~~Registry wall-position metadata~~ ✅ v0.9.0 (`wall_slots`/
+  `wall_passes`/`wall_model` + `plan_from_registry` + `GET /wall/plan`).
+  Remaining: the §7 bench pass (ties/save/loopback integrity), the graphical
+  wall view on top, and generating the baseline scene from a WallPlan.
 - **MIDI bridge (long-term)** — an Akai APC-class controller registered via
   a bridge agent (see Bridge agents above); MIDI-learn maps any control to
   any Nexus action; LED feedback pulses on beat.

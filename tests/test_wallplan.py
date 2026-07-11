@@ -97,6 +97,34 @@ def test_joe_wall_is_sixteen_slots_across_five_128s():
     assert [l.matrix_input for l in plan.lanes] == list(range(1, 17))
 
 
+def test_plan_from_registry_reads_wall_metadata():
+    from nexus.wallplan import plan_from_registry
+    units = [
+        {"name": "device.mtpx.1", "wall_model": "MTPX Plus 1616",
+         "host": "10.0.0.15", "wall_slots": ["r1c1", "r1c2"], "wall_passes": 2},
+        {"name": "device.mtpx.2", "wall_model": "MTPX Plus 128",
+         "host": "10.0.0.16", "wall_slots": ["r2c1", "r2c2"], "wall_passes": 2},
+    ]
+    plan = plan_from_registry(units)
+    assert [l.slot for l in plan.lanes] == ["r1c1", "r1c2", "r2c1", "r2c2"]
+    # The 128's lanes only use skewable inputs 5-12.
+    mtpx2 = [l for l in plan.lanes if l.unit == "device.mtpx.2"]
+    assert all(all(i >= 5 for i in l.inputs) for l in mtpx2)
+    # Matrix inputs number across the whole wall in slot order.
+    assert [l.matrix_input for l in plan.lanes] == [1, 2, 3, 4]
+
+
+def test_plan_from_registry_ignores_unslotted_units():
+    from nexus.wallplan import plan_from_registry
+    plan = plan_from_registry([
+        {"name": "device.mtpx.1", "wall_model": "MTPX Plus 128",
+         "wall_slots": ["r1c1"], "wall_passes": 2},
+        {"name": "device.mtpx.spare", "wall_model": "MTPX Plus 128",
+         "wall_slots": []},
+    ])
+    assert len(plan.lanes) == 1 and plan.lanes[0].unit == "device.mtpx.1"
+
+
 def test_joe_wall_rack_artifacts():
     plan = joe_wall()
     # Identity matrix baseline: slot k in → out k, MGPs get 4 slots each.

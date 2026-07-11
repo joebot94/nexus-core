@@ -1,3 +1,3 @@
 """Nexus Core — central hardware abstraction service for the Joebot AV lab. 🦖"""
 
-VERSION = "0.8.0"
+VERSION = "0.9.0"

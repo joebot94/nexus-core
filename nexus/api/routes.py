@@ -328,6 +328,47 @@ async def group_action(request: Request, group_id: str, body: GroupActionRequest
             "parameters": body.parameters, "results": results}
 
 
+@router.get("/wall/plan", dependencies=[Depends(require_token)])
+def wall_plan(request: Request):
+    """Resolve the MTPX video wall from registry placement metadata into a
+    planning artifact: per-slot lanes, the physical loopback patch list, baseline
+    tie sets, the Matrix 12800 identity routing, and MGP assignment. Read-only
+    and fires nothing — planning truth for a graphical wall view and for racking
+    the loopback cables. See docs/MTPX-WALL-DESIGN.md."""
+    from ..wallplan import WallPlanError, plan_from_registry
+
+    ctx = _ctx(request)
+    units = [
+        {"name": e.config.device_id, "wall_model": e.config.wall_model,
+         "host": e.config.host, "wall_slots": e.config.wall_slots,
+         "wall_passes": e.config.wall_passes}
+        for e in ctx.registry.all() if e.config.type == "mtpx"
+    ]
+    slotted = [u for u in units if u["wall_slots"]]
+    if not slotted:
+        return {"configured": False, "units": len(units),
+                "note": "no MTPX devices carry wall_slots yet — add placement "
+                        "in the registry (docs/MTPX-WALL-DESIGN.md)"}
+    try:
+        plan = plan_from_registry(units)
+    except WallPlanError as exc:
+        raise HTTPException(422, f"wall plan invalid: {exc}") from exc
+    return {
+        "configured": True,
+        "lanes": [
+            {"slot": l.slot, "unit": l.unit, "inputs": l.inputs,
+             "outputs": l.outputs, "matrix_input": l.matrix_input,
+             "passes": l.passes, "max_skew": l.max_skew}
+            for l in plan.lanes
+        ],
+        "patch_list": plan.patch_list(),
+        "unit_ties": plan.unit_ties(),
+        "matrix_ties": plan.matrix_ties(),
+        "mgp_assignment": plan.mgp_assignment(),
+        "warnings": plan.warnings,
+    }
+
+
 @router.get("/scenes", dependencies=[Depends(require_token)])
 def list_scenes(request: Request):
     """Named, ordered cross-device recalls — the baseline + chaos deltas."""

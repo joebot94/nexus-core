@@ -203,6 +203,25 @@ def plan_wall(units: list[UnitSpec], requests: list[SlotRequest]) -> WallPlan:
     return WallPlan(units=units, lanes=lanes, warnings=warnings)
 
 
+def plan_from_registry(mtpx_devices: list[dict]) -> WallPlan:
+    """Build a WallPlan from registry MTPX entries carrying wall metadata, so
+    the registry is the single source of truth for wall placement. Each dict:
+    `{name, wall_model, host, wall_slots: [...], wall_passes: int}`. Units with
+    no `wall_slots` still register as available capacity (their spare ports show
+    up in the budget); only slotted units get lanes."""
+    specs: list[UnitSpec] = []
+    requests: list[SlotRequest] = []
+    for d in mtpx_devices:
+        name = d["name"]
+        specs.append(UnitSpec(name=name,
+                              model=d.get("wall_model") or "MTPX Plus 128",
+                              host=d.get("host", "")))
+        passes = int(d.get("wall_passes", 2))
+        for slot in d.get("wall_slots", []):
+            requests.append(SlotRequest(slot=slot, unit=name, passes=passes))
+    return plan_wall(specs, requests)
+
+
 def joe_wall(unit_count: int = 5, passes: int = 2) -> WallPlan:
     """The brain-dump wall: N × MTPX Plus 128, 3 slots each, the last unit
     carrying a 4th, filling row-major slots of the 4×4 logical wall."""

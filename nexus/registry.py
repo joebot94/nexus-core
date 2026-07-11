@@ -91,6 +91,9 @@ DEFAULT_DEVICES: list[dict[str, Any]] = [
                  "when firing skew. NAS API (status.joe.bot:8080) is a fallback route.",
         "enabled": True,
         "simulate": False,
+        "wall_model": "MTPX Plus 1616",
+        "wall_slots": ["r1c1", "r1c2"],   # example placement; adjust when racked
+        "wall_passes": 2,
     },
     {
         "device_id": "device.mtpx.2",
@@ -103,6 +106,9 @@ DEFAULT_DEVICES: list[dict[str, Any]] = [
                  "1-4 are VGA/analog pass-through. IP unconfirmed, powered off.",
         "enabled": True,
         "simulate": False,
+        "wall_model": "MTPX Plus 128",
+        "wall_slots": ["r2c1", "r2c2"],   # example placement; adjust when racked
+        "wall_passes": 2,
     },
     {
         "device_id": "device.mtpx.sim",
@@ -164,6 +170,13 @@ class DeviceConfig(BaseModel):
     # Optional ID in Joebot Lab's read-only telemetry API. If absent, Nexus
     # falls back to the known family mapping while the registry is migrated.
     lab_device_id: str = ""
+    # MTPX wall placement — which video-wall slots this unit carries and how
+    # many cascade (loopback) skew passes each takes. Lets the wall planner and
+    # a graphical wall view resolve slot → unit/lane from one source of truth.
+    # See docs/MTPX-WALL-DESIGN.md. Empty = not part of a configured wall.
+    wall_slots: list[str] = Field(default_factory=list)
+    wall_passes: int = 2
+    wall_model: str = "MTPX Plus 128"   # for the planner's port/skew budget
 
 
 @dataclass

@@ -199,3 +199,14 @@ Device-control code was instead re-homed conceptually from **joebot-lab**
 - 11 new tests (store + API over sim devices); 82 total. Baseline scene
   currently only carries the MGP clean-layout step; the MTPX/matrix/SMX steps
   get authored (or WallPlan-generated) once they clear the bench pass.
+
+## v0.9.0 (2026-07-11, local — NAS still runs v0.4.0)
+
+- **Registry wall placement + `/wall/plan`** — MTPX devices now carry
+  `wall_slots` / `wall_passes` / `wall_model` in the registry, so wall
+  placement lives in one source of truth. `wallplan.plan_from_registry()`
+  turns that into a WallPlan, and `GET /wall/plan` returns the resolved lanes,
+  physical loopback patch list, baseline tie sets, Matrix identity routing,
+  and MGP assignment — read-only planning truth for a future graphical wall
+  view and for racking the cables. Default registry ships example placement on
+  the two MTPX units (2×2). 3 new tests; 85 total.

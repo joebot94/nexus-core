@@ -129,3 +129,18 @@ async def test_scene_recall_fires_steps_and_updates_state(client):
 async def test_scene_recall_unknown_404(client):
     r = await client.post("/api/v1/scenes/scene.ghost/recall")
     assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_wall_plan_from_registry_metadata(client):
+    r = await client.get("/api/v1/wall/plan")
+    assert r.status_code == 200
+    body = r.json()
+    # Default registry ships example placement on the two MTPX units.
+    assert body["configured"] is True
+    slots = [l["slot"] for l in body["lanes"]]
+    assert slots == ["r1c1", "r1c2", "r2c1", "r2c2"]
+    assert body["matrix_ties"][0] == "1*1!"
+    assert body["mgp_assignment"]["r1c1"] == 1
+    # One loopback cable per 2-pass lane.
+    assert len(body["patch_list"]) == 4
