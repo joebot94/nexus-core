@@ -240,3 +240,22 @@ Device-control code was instead re-homed conceptually from **joebot-lab**
   baseline. MTPX tie/skew steps are verified=false so live recall stays
   bench-gated; dry-run (`/scenes/{id}/recall?dry_run=true`) is always safe.
   2 new tests; 95 total.
+
+## v0.12.0 (2026-07-11, local — NAS still runs v0.4.0)
+
+- **Video-wall composition layer** (`nexus/videowall.py`) — the MGP layer above
+  the MTPX cascade, ported from GlitchWall's topology + Joe's real signal chain
+  (GlitchBoard/docs/VIDEOWALL-MGP-DESIGN.md). Pure planning, fires nothing:
+  - `LAYOUTS` (GlitchWall §5 table, +16 for 4×4); builder/combiner MGP roles;
+    single-MGP for ≤4 tiles (2×2 = one MGP does all, per Joe's rig — overrides
+    GlitchWall's builders_used).
+  - `tile_path()` resolves each tile's full journey through the DMS fabric
+    (source → DMS → builder MGP → DMS → combiner MGP → DMS out), per signal
+    style: DIGITAL, RGB (skew stage: SMX→MTPX, 0-31 = 0-62ns line delay, RGB
+    ONLY), COMPOSITE (via the 12800). This is what lets skew/scramble target the
+    right square and keep sync.
+  - `mechanisms_for_move()` — same square→input-remap, same MGP→window move,
+    cross-MGP→routing (analog preferred on analog walls). `MECHANISMS` carry
+    bench-measured rate ceilings (input-remap 15Hz verified; rest TBD).
+  - 14 tests; 109 total. Next: `/wall/*` endpoints + generate wall scenes from a
+    resolved wall (source-mode IPCP step + per-tile paths) + GlitchBoard Wall Cue.
