@@ -117,6 +117,14 @@ async def read_device_name_bank(request: Request, device_id: str, kind: str = "i
     request at 32 entries and reject a bank outside the installed profile.
     """
     entry = _get_entry(request, device_id)
+    cached = _ctx(request).read_cache.names.get((device_id, kind))
+    if cached is not None:
+        stop = start + count - 1
+        names = {key: value for key, value in cached.value.items() if start <= int(key) <= stop}
+        if names:
+            return {"ok": True, "kind": kind, "start": start, "count": count,
+                    "names": names, "latency_ms": 0, "verified": False,
+                    "cached": True, "cache_age_s": _ctx(request).read_cache.age_seconds(cached)}
     try:
         result = await entry.adapter.execute("read_name_bank", {
             "kind": kind, "start": start, "count": count})
@@ -129,6 +137,8 @@ async def read_device_name_bank(request: Request, device_id: str, kind: str = "i
         return {"ok": False, "kind": kind, "start": start, "count": count,
                 "names": {}, "error": result.error, "latency_ms": result.latency_ms}
     names = result.state.get("names", {}).get(kind, {})
+    if names:
+        _ctx(request).read_cache.put_names(device_id, kind, names)
     return {"ok": True, "kind": kind, "start": start, "count": count,
             "names": names, "latency_ms": result.latency_ms,
             "verified": entry.adapter.actions["read_name_bank"].verified}
@@ -148,11 +158,16 @@ async def get_lab_telemetry(request: Request, device_id: str):
     lab_id = entry.config.lab_device_id or DEFAULT_LAB_IDS.get(entry.config.type, "")
     if not lab_id:
         raise HTTPException(404, f"no Joebot Lab mapping for {device_id}")
+    cached = _ctx(request).read_cache.telemetry.get(device_id)
+    if cached is not None:
+        return {"device_id": device_id, "lab_device_id": lab_id, "telemetry": cached.value,
+                "cached": True, "cache_age_s": _ctx(request).read_cache.age_seconds(cached)}
     try:
         telemetry = await _ctx(request).lab.device(lab_id)
     except LabTelemetryError as exc:
         raise HTTPException(503, str(exc)) from exc
-    return {"device_id": device_id, "lab_device_id": lab_id, "telemetry": telemetry}
+    _ctx(request).read_cache.put_telemetry(device_id, telemetry)
+    return {"device_id": device_id, "lab_device_id": lab_id, "telemetry": telemetry, "cached": False}
 
 
 @router.get("/devices/{device_id}/routes", dependencies=[Depends(require_token)])
@@ -175,6 +190,15 @@ async def read_route_bank(request: Request, device_id: str, start: int = 1, coun
     if not 1 <= count <= 32:
         raise HTTPException(422, "count must be in range 1-32")
     stop = min(outputs, start + count - 1)
+    cached = _ctx(request).read_cache.routes.get(device_id)
+    if cached is not None:
+        wanted = {str(output): cached.value[output] for output in range(start, stop + 1)
+                  if output in cached.value}
+        if len(wanted) == stop - start + 1:
+            return {"ok": True, "device_id": device_id, "start": start,
+                    "count": stop - start + 1, "plane": plane, "ties": wanted,
+                    "errors": {}, "verified": True, "cached": True,
+                    "cache_age_s": _ctx(request).read_cache.age_seconds(cached)}
     ties: dict[str, int] = {}
     errors: dict[str, str] = {}
     for output in range(start, stop + 1):
@@ -193,6 +217,10 @@ async def read_route_bank(request: Request, device_id: str, start: int = 1, coun
             ties[str(output)] = input_value
         elif not result.ok:
             errors[str(output)] = result.error or "query failed"
+    if ties:
+        cached_ties = dict(cached.value) if cached is not None else {}
+        cached_ties.update({int(key): value for key, value in ties.items()})
+        _ctx(request).read_cache.put_routes(device_id, cached_ties)
     return {
         "ok": not errors,
         "device_id": device_id,
@@ -202,6 +230,7 @@ async def read_route_bank(request: Request, device_id: str, start: int = 1, coun
         "ties": ties,
         "errors": errors,
         "verified": entry.adapter.actions["query_tie"].verified,
+        "cached": False,
     }
 
 

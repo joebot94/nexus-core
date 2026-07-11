@@ -23,6 +23,10 @@ class Settings:
     # with NEXUS_LAB_URL=http://127.0.0.1:8080.
     lab_url: str = field(default_factory=lambda: os.environ.get(
         "NEXUS_LAB_URL", "").rstrip("/"))
+    # Warm snapshots keep desktop/mobile clients instant without asking each
+    # freshly opened app to perform the same DMS route/name reads.
+    cache_poll_seconds: int = field(default_factory=lambda: int(os.environ.get("NEXUS_CACHE_POLL_SECONDS", "10")))
+    name_cache_seconds: int = field(default_factory=lambda: int(os.environ.get("NEXUS_NAME_CACHE_SECONDS", "300")))
 
     @property
     def registry_path(self) -> Path:
