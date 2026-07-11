@@ -8,6 +8,7 @@ from contextlib import suppress
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
@@ -23,6 +24,7 @@ from .lab import DEFAULT_LAB_IDS, LabTelemetryError
 from .read_cache import ReadCache
 from .registry import Registry
 from .state import StateStore
+from .transports import PooledTransport
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
@@ -35,6 +37,9 @@ class Context:
     events: EventBus
     lab: LabTelemetryClient
     read_cache: ReadCache
+    # Set by create_app: (re)attach unsolicited-line handlers to every pooled
+    # transport. Called at startup and after a registry reload.
+    wire_pools: Callable[[], None] | None = None
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -93,6 +98,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 next_names = now + max(30, ctx.settings.name_cache_seconds)
             await asyncio.sleep(max(2, ctx.settings.cache_poll_seconds))
 
+    def wire_unsolicited(entry) -> None:
+        """Route a pooled device's unsolicited lines (front-panel changes,
+        other sessions' echoes) through its adapter into state + events."""
+        adapter, device_id = entry.adapter, entry.config.device_id
+
+        def handle(line: str) -> None:
+            state = adapter.parse_unsolicited(line)
+            if state:
+                ctx.state.update(device_id, state, "query")
+            ctx.events.emit("unsolicited", device_id,
+                            f"unsolicited: {line}" + (f" → {state}" if state else ""),
+                            payload={"line": line, "state": state})
+
+        entry.adapter.transport.on_unsolicited = handle
+
+    def wire_pools() -> None:
+        for entry in ctx.registry.all():
+            if isinstance(entry.adapter.transport, PooledTransport):
+                wire_unsolicited(entry)
+
+    ctx.wire_pools = wire_pools
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         devices = ctx.registry.all()
@@ -101,11 +128,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         f"{sum(1 for d in devices if d.simulated)} simulated")
         for warning in ctx.registry.load_warnings:
             ctx.events.emit("nexus", "nexus-core", f"registry warning: {warning}")
+        wire_pools()
         warm_task = asyncio.create_task(warm_read_cache())
         yield
         warm_task.cancel()
         with suppress(asyncio.CancelledError):
             await warm_task
+        for entry in ctx.registry.all():
+            if isinstance(entry.adapter.transport, PooledTransport):
+                await entry.adapter.transport.aclose()
         ctx.events.emit("nexus", "nexus-core", "Nexus Core shutting down")
         ctx.events.flush()
 

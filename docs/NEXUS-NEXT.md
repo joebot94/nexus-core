@@ -28,11 +28,19 @@
 - Measure beat-cue latency through Nexus vs direct before trusting it live.
 
 ## M4 — NAS residency + connection ownership
-- Deploy to Synology (docs/NEXUS-DEPLOYMENT.md), set NEXUS_TOKEN.
-- Persistent connection pool per device, policy from *measured* behavior
-  (MGP: ~310s idle self-close, keepalive resets timer, 4+ concurrent OK);
-  gap-aware recycle; unsolicited-response listener → `query`-sourced state.
-- Polling where appropriate; `degraded` status semantics.
+- ~~Deploy to NAS~~ ✅ (docs/NEXUS-DEPLOYMENT.md; NEXUS_TOKEN still unset,
+  trusted LAN).
+- ~~Persistent connection pool per device~~ ✅ v0.6.0 —
+  `transports/pool.py`: gap-aware recycle (280s < MGP's ~310s self-close),
+  retry-once on the self-close race, opt-in keepalive, unsolicited-response
+  listener → `parse_unsolicited` → query-sourced state + `unsolicited`
+  events. Registry: `"connection": "pooled"` + `idle_recycle_s`/
+  `keepalive_s` per device; mgp.1 defaults pooled w/ 240s keepalive.
+  **LIVE PASS PENDING (operator watching):** confirm held-socket latency,
+  the ~310s race handling against the real box, and what the MGP actually
+  volunteers unsolicited (front-panel preset recall while Nexus listens).
+- Polling where appropriate; `degraded` status semantics (pool `stats` are
+  exposed on the transport — surface consecutive failures in /devices).
 - Event log rotation/retention (daily / 100MB / 7 days per the vision doc).
 
 ## Later

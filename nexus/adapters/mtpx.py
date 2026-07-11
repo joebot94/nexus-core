@@ -156,6 +156,14 @@ class MTPXAdapter(ExtronSISAdapter):
             result.state_source = "command_ack" if confirmed else "inferred"
         return result
 
+    def parse_unsolicited(self, line: str) -> dict:
+        """Skew echoes (`IseqNN r g b`) arriving outside an exchange — another
+        session (GlitchBoard direct, GlitchBeat) or the front panel moved it."""
+        if match := _ISEQ_ECHO_RE.match(line):
+            inp, r, g, b = (int(match.group(i)) for i in range(1, 5))
+            return {f"input_{inp}_skew": [r, g, b]}
+        return super().parse_unsolicited(line)
+
     async def do_save_preset(self, preset: int) -> ActionResult:
         result = await self._batch([f"{preset},"])
         if result.ok:

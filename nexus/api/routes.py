@@ -10,6 +10,7 @@ from .. import VERSION
 from ..adapters.base import InvalidParams, UnsupportedAction
 from ..lab import DEFAULT_LAB_IDS, LabTelemetryError
 from ..registry import DeviceEntry
+from ..transports import PooledTransport
 from .models import ActionRequest, ActionResponse, DeviceOut, RawRequest
 
 router = APIRouter(prefix="/api/v1")
@@ -318,11 +319,20 @@ async def raw_command(request: Request, device_id: str, body: RawRequest):
 
 
 @router.post("/registry/reload", dependencies=[Depends(require_token)])
-def reload_registry(request: Request):
+async def reload_registry(request: Request):
     """Re-read device_registry.jbt without restarting — edit the file, hit this,
     and the new device is live. State for existing devices is retained."""
     ctx = _ctx(request)
+    # Reload rebuilds every adapter: close the outgoing pooled sockets so no
+    # reader task keeps an orphaned connection to the rack…
+    old_pools = [entry.adapter.transport for entry in ctx.registry.all()
+                 if isinstance(entry.adapter.transport, PooledTransport)]
     warnings = ctx.registry.load()
+    for pool in old_pools:
+        await pool.aclose()
+    # …and re-attach unsolicited listeners on the fresh ones.
+    if ctx.wire_pools:
+        ctx.wire_pools()
     devices = ctx.registry.all()
     ctx.events.emit("nexus", "nexus-core",
                     f"registry reloaded — {len(devices)} device(s)"

@@ -127,6 +127,17 @@ class DeviceAdapter:
         """Read-only reachability + identity check. Must never mutate state."""
         raise NotImplementedError
 
+    def parse_unsolicited(self, line: str) -> dict[str, Any]:
+        """Map one unsolicited line (what an open session hears when the front
+        panel or another session changes something) to confirmed state values.
+
+        Conservative by contract: return {} for anything not positively
+        recognized. Which lines devices actually volunteer is bench-truth —
+        patterns here reuse the ack shapes until the live listening pass
+        confirms them.
+        """
+        return {}
+
     @staticmethod
     def _validate(spec: ActionSpec, params: dict[str, Any]) -> dict[str, Any]:
         clean: dict[str, Any] = {}

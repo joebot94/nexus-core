@@ -144,3 +144,24 @@ Device-control code was instead re-homed conceptually from **joebot-lab**
 - **MTPX `save_preset`** (`{N},`) added, `verified=false` like `tie` — the
   full ties→save→recall loop now exists in the API but the whole chain waits
   on the design doc's §7 bench pass before anything fires at hardware.
+
+## v0.6.0 (2026-07-11, local — NAS still runs v0.4.0)
+
+- **Connection pooling (M4)** — `transports/pool.py`, a drop-in for the
+  one-shot transport. One held socket per device: single reader task routes
+  bytes to the in-flight exchange or, when idle, to an unsolicited-line
+  listener. Gap-aware recycle at 280s idle (under the MGP's measured ~310s
+  self-close), transparent retry-once when the socket dies mid-send (the
+  self-close race), opt-in keepalive that never dials a dark device.
+  Silence stays a non-failure (MTPX no-response semantics preserved).
+- **Unsolicited → state**: `adapter.parse_unsolicited(line)` (family +
+  MGP/MTPX overrides, deliberately conservative) feeds the state store as
+  query-sourced values and emits `unsolicited` events on the WS stream.
+  Front-panel changes become visible to every client — once live-verified.
+- Registry: per-device `connection: pooled` + `idle_recycle_s`/`keepalive_s`;
+  default mgp.1 entry is pooled w/ 240s keepalive. `/registry/reload` now
+  closes outgoing pooled sockets and rewires listeners.
+- 68 tests. **Not yet live-fired**: pooled path against the real MGP (held-
+  socket latency, race handling, what it actually volunteers unsolicited)
+  needs the operator session. NAS registry needs the `connection` field
+  hot-edited (or registry reset) when v0.6.0 deploys.

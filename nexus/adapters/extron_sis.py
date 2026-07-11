@@ -37,6 +37,9 @@ _ERROR_RE = re.compile(r"^(E\d{2})\b")
 # Connect banner: "(c) Copyright …, Extron Electronics, <model>, V<fw>, <part>"
 _BANNER_MODEL_RE = re.compile(r"Extron Electronics[,.]?\s*([^,]+),\s*V?([\d.]+)", re.IGNORECASE)
 _NAME_RESPONSE_RE = re.compile(r"^Nm[IOG]\d+(?:\*\d+)?,\s*(.+)$", re.IGNORECASE)
+# Unsolicited broadcast shapes (mirror the ack forms; live-listening pass pending).
+_UNSOL_PRESET_RE = re.compile(r"^Rpr\s*0*(\d{1,3})$")
+_UNSOL_TIE_RE = re.compile(r"^Out\s*0*(\d{1,3})\s+In\s*0*(\d{1,3})")
 
 
 def name_bank_action(kinds: list[str]) -> ActionSpec:
@@ -132,6 +135,15 @@ class ExtronSISAdapter(DeviceAdapter):
         if "," in cleaned:
             return cleaned.split(",", 1)[1].strip() or None
         return cleaned
+
+    def parse_unsolicited(self, line: str) -> dict:
+        """Family-wide broadcast shapes: a front-panel preset recall echoes the
+        same `RprNN` an acked recall does; a tie change echoes `OutNN InNN`."""
+        if match := _UNSOL_PRESET_RE.match(line):
+            return {"preset": int(match.group(1))}
+        if match := _UNSOL_TIE_RE.match(line):
+            return {f"output_{int(match.group(1))}": int(match.group(2))}
+        return {}
 
     async def probe(self) -> ActionResult:
         """Read-only identity check — the same safe `Q` GlitchBoard Phase 1 used.

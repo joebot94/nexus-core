@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from . import jbt
 from .adapters import ADAPTER_TYPES, DeviceAdapter
 from .config import Settings
-from .transports import SimTransport, TCPTransport
+from .transports import PooledTransport, PoolPolicy, SimTransport, TCPTransport
 
 # Status vocabulary: unknown (never probed), online, offline, degraded.
 DEFAULT_DEVICES: list[dict[str, Any]] = [
@@ -31,6 +31,11 @@ DEFAULT_DEVICES: list[dict[str, Any]] = [
         "notes": "The live unit — `2*NN.` preset recall verified July 2026. Slots 48-71 = saved 2x2 chaos layouts, 48 = clean.",
         "enabled": True,
         "simulate": False,
+        # Measured: self-closes at ~310s idle, keepalive resets the timer,
+        # 4+ concurrent sessions OK. Pool + keepalive = fast sends and
+        # always-on unsolicited listening (front-panel changes).
+        "connection": "pooled",
+        "keepalive_s": 240.0,
     },
     {
         "device_id": "device.matrix.main",
@@ -138,6 +143,15 @@ class DeviceConfig(BaseModel):
     # (falling back to admin/admin, matching the lab's handshake).
     username: str = ""
     password: str = ""
+    # "oneshot" = connect per command (safe default). "pooled" = one held
+    # socket: fast sends, gap-aware recycle, and unsolicited listening.
+    connection: str = "oneshot"
+    # Pooled policy, from measured behavior (MGP self-closes at ~310s idle):
+    # recycle a socket idle past this many seconds…
+    idle_recycle_s: float = 280.0
+    # …and, when > 0, keep an open socket warm by touching it at this idle
+    # age (enables always-on unsolicited listening; 0 = off).
+    keepalive_s: float = 0.0
     # Physical topology and telemetry support. This is an explicit configured
     # fallback until the adapter has a live, read-only discovery command for
     # the particular model/card family. It lets every client draw only real,
@@ -195,7 +209,16 @@ class Registry:
             simulated = config.simulate or self.settings.simulate_all
             if simulated:
                 transport = SimTransport(adapter_cls.Simulator())
+            elif config.connection == "pooled":
+                transport = PooledTransport(
+                    config.host, config.port,
+                    username=config.username, password=config.password,
+                    policy=PoolPolicy(idle_recycle_s=config.idle_recycle_s,
+                                      keepalive_s=config.keepalive_s))
             else:
+                if config.connection != "oneshot":
+                    warnings.append(f"{config.device_id}: unknown connection "
+                                    f"{config.connection!r}, using oneshot")
                 transport = TCPTransport(config.host, config.port,
                                          username=config.username,
                                          password=config.password)

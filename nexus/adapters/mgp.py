@@ -43,6 +43,14 @@ class MGP464Adapter(ExtronSISAdapter):
         "query_part_number": ActionSpec(summary="Query part number (`N`)"),
     }
 
+    def parse_unsolicited(self, line: str) -> dict:
+        """A front-panel layout recall should broadcast the same `Rpr2*NNN` an
+        acked one does. Window-route acks are a bare `NN` — too ambiguous to
+        trust unsolicited, so those are deliberately not parsed."""
+        if match := _RECALL_ACK_RE.match(line):
+            return {"preset": int(match.group(1))}
+        return super().parse_unsolicited(line)
+
     async def do_recall_preset(self, preset: int) -> ActionResult:
         result = await self.send(f"2*{preset}.")
         if result.ok:
