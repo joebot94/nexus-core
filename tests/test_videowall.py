@@ -218,3 +218,45 @@ async def test_videowall_baseline_recall_is_resilient(client):
     results = r.json()["results"]
     assert results[0]["action"] == "set_wall_mode" and results[0]["ok"] is False
     assert any(x["ok"] for x in results)                 # real steps still fired
+
+
+# ---- scramble generator ----------------------------------------------------
+
+def test_scramble_is_a_derangement():
+    from nexus.videowall import scramble_steps
+    wall = _wall_3x3()   # horizontal → each builder = 1×3 row = 3 windows
+    steps = scramble_steps(wall, builders=[0], seed=0)
+    # Every window on builder 0 gets a DIFFERENT input than its own number.
+    assert len(steps) == 3
+    for s in steps:
+        assert s["parameters"]["input"] != s["parameters"]["window"]   # no fixed point
+        assert s["action"] == "route_input_to_window"
+    inputs = sorted(s["parameters"]["input"] for s in steps)
+    assert inputs == [1, 2, 3]                       # a true permutation
+
+
+def test_scramble_per_region_selection():
+    from nexus.videowall import scramble_steps
+    wall = _wall_3x3()
+    only_top = scramble_steps(wall, builders=[0], seed=1)
+    assert {s["target"] for s in only_top} == {"device.mgp.1"}   # just that quadrant
+    whole = scramble_steps(wall, seed=1)
+    assert {s["target"] for s in whole} == {"device.mgp.1", "device.mgp.2", "device.mgp.3"}
+
+
+def test_scramble_deterministic_from_seed():
+    from nexus.videowall import scramble_steps
+    wall = _wall_3x3()
+    assert scramble_steps(wall, seed=5) == scramble_steps(wall, seed=5)
+
+
+@pytest.mark.asyncio
+async def test_scramble_scene_endpoint(client):
+    r = await client.post("/api/v1/wall/videowall/scramble-scene", json={
+        "tiles": 9, "builders": [0], "seed": 3,
+        "builder_devices": ["device.mgp.1", "device.mgp.2", "device.mgp.3"],
+        "combiner_device": "device.mgp.5"})
+    assert r.status_code == 200
+    scene = r.json()["scene"]
+    assert scene["id"] == "scene.videowall-scramble"
+    assert all(s["action"] == "route_input_to_window" for s in scene["steps"])

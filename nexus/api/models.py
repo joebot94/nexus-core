@@ -51,6 +51,14 @@ class VideowallPlanRequest(BaseModel):
     smx_device: str = "device.smx.main"
 
 
+class VideowallScrambleRequest(VideowallPlanRequest):
+    """A wall config plus which regions to scramble and a seed. `builders` picks
+    the builder MGP indices to affect (empty = all) — one index = "that quadrant
+    goes crazy, rest stays clean." Same seed → same deterministic scramble."""
+    builders: list[int] = Field(default_factory=list)
+    seed: int = 0
+
+
 class DeviceOut(BaseModel):
     device_id: str
     type: str

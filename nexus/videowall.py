@@ -302,3 +302,48 @@ def baseline_steps(wall: WallConfig) -> list[dict]:
                       "parameters": {"input": p.combiner_out, "output": p.combiner_out},
                       "note": "combiner → wall"})
     return steps
+
+
+# ---- procedural glitch generation ------------------------------------------
+
+def _windows_per_builder(wall: WallConfig) -> int:
+    """How many windows a single builder MGP drives."""
+    if wall.is_single_mgp:
+        return wall.tiles
+    spec = wall.layout
+    return spec.cols if wall.orientation is Orientation.HORIZONTAL else spec.rows
+
+
+def _builder_device(wall: WallConfig, builder_index: int) -> str:
+    if wall.is_single_mgp:
+        return wall.combiner_device or (wall.builder_devices[0] if wall.builder_devices else "")
+    if builder_index < len(wall.builder_devices):
+        return wall.builder_devices[builder_index]
+    return f"builder[{builder_index}]"
+
+
+def scramble_steps(wall: WallConfig, builders: list[int] | None = None,
+                   seed: int = 0) -> list[dict]:
+    """Input-remap scramble — the fast, clean glitch. On each chosen builder MGP,
+    permute which input feeds each window as a **derangement** (every tile shows a
+    different source than baseline; nothing stays put), deterministic from `seed`.
+    Emits `route_input_to_window` steps: input remap, ~15 Hz, no handshake, tiles
+    keep their screen position. `builders` selects which regions to scramble —
+    pass one builder index for "that quadrant goes crazy, the rest stays clean."
+    """
+    n = _windows_per_builder(wall)
+    if n < 2:
+        return []                      # nothing to permute
+    if builders is None:
+        builders = [0] if wall.is_single_mgp else list(range(wall.layout.builders_used))
+    steps: list[dict] = []
+    for builder_index in builders:
+        device = _builder_device(wall, builder_index)
+        # A non-zero rotation is always a derangement — no window keeps its input.
+        shift = 1 + ((seed + builder_index) % (n - 1))
+        for window in range(1, n + 1):
+            source_input = ((window - 1 + shift) % n) + 1
+            steps.append({"target": device, "action": "route_input_to_window",
+                          "parameters": {"input": source_input, "window": window},
+                          "note": f"scramble: input {source_input} → window {window}"})
+    return steps

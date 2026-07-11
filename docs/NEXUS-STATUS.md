@@ -271,3 +271,15 @@ Device-control code was instead re-homed conceptually from **joebot-lab**
   step (e.g. the not-yet-wired IR source-mode) is recorded as a failed step and
   the recall CONTINUES instead of aborting. New `_run_step` helper shared by
   scene recall + group fan-out. 4 new tests; 115 total.
+
+## v0.15.0 (2026-07-11, local — NAS still runs v0.4.0)
+
+- **Procedural glitch generator — scramble** (`videowall.scramble_steps` +
+  `POST /wall/videowall/scramble-scene`). Input-remap scramble: on the chosen
+  builder MGPs, permute which input feeds each window as a **derangement**
+  (every tile changes, nothing stays), deterministic from a seed. Emits
+  `route_input_to_window` steps — the fast/clean glitch (~15Hz, no handshake,
+  tiles keep position). `builders: [0]` scrambles just that region → Joe's "one
+  quadrant crazy, rest clean." Saved as `scene.videowall-scramble` (chaos delta
+  on the baseline), dry-runnable. 4 new tests; 119 total. Next generators:
+  skew-burst (RGB path), freeze/mute, chase sequences.

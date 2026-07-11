@@ -12,7 +12,8 @@ from ..lab import DEFAULT_LAB_IDS, LabTelemetryError
 from ..registry import DeviceEntry
 from ..transports import LanePoolTransport, PooledTransport
 from .models import (ActionRequest, ActionResponse, DeviceOut,
-                     GroupActionRequest, RawRequest, VideowallPlanRequest)
+                     GroupActionRequest, RawRequest, VideowallPlanRequest,
+                     VideowallScrambleRequest)
 
 router = APIRouter(prefix="/api/v1")
 _started = time.monotonic()
@@ -488,6 +489,44 @@ def videowall_baseline_scene(request: Request, body: VideowallPlanRequest):
                     f"generated {scene.id} — {len(scene.steps)} steps from videowall config")
     return {"ok": True, "scene": scene.model_dump(),
             "hint": "dry-run: POST /scenes/scene.videowall-baseline/recall?dry_run=true"}
+
+
+@router.post("/wall/videowall/scramble-scene", dependencies=[Depends(require_token)])
+def videowall_scramble_scene(request: Request, body: VideowallScrambleRequest):
+    """Generate an input-remap scramble as a chaos DELTA on the baseline —
+    permute which source feeds each window on the chosen builder MGPs (deranged,
+    deterministic from `seed`). Saved as `scene.videowall-scramble`, dry-runnable.
+    `builders: [0]` = scramble only that region; empty = the whole wall."""
+    from ..scenes import Scene, SceneStep
+    from ..videowall import (Orientation, Signal, VideowallError, WallConfig,
+                             scramble_steps)
+    ctx = _ctx(request)
+    try:
+        wall = WallConfig(
+            tiles=body.tiles, orientation=Orientation(body.orientation),
+            signal=Signal(body.signal), builder_devices=body.builder_devices,
+            combiner_device=body.combiner_device, source_device=body.source_device,
+            mtpx_devices=body.mtpx_devices, dms_device=body.dms_device,
+            matrix_device=body.matrix_device, smx_device=body.smx_device)
+        steps = scramble_steps(wall, builders=body.builders or None, seed=body.seed)
+    except VideowallError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(422, f"invalid orientation/signal: {exc}") from exc
+
+    if not steps:
+        raise HTTPException(422, "nothing to scramble (a 1-wide layout has no "
+                                 "windows to permute)")
+    scene = Scene(id="scene.videowall-scramble",
+                  label=f"Videowall scramble (seed {body.seed})",
+                  notes="Input-remap chaos delta on the baseline. Fast (~15Hz), "
+                        "no handshake; tiles keep position, sources shuffle.",
+                  steps=[SceneStep(**s) for s in steps])
+    ctx.scenes.upsert_scene(scene)
+    ctx.events.emit("nexus", "nexus-core",
+                    f"generated {scene.id} — {len(scene.steps)} route steps")
+    return {"ok": True, "scene": scene.model_dump(),
+            "hint": "dry-run: POST /scenes/scene.videowall-scramble/recall?dry_run=true"}
 
 
 @router.get("/scenes", dependencies=[Depends(require_token)])
