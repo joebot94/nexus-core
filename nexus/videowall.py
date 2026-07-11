@@ -247,3 +247,58 @@ def max_rate_hz(mechanism: Mechanism) -> float:
 def clamp_rate(requested_hz: float, mechanism: Mechanism) -> float:
     """A cue can't drive a mechanism past its usable switch rate."""
     return min(requested_hz, MECHANISMS[mechanism].max_hz)
+
+
+# ---- baseline scene generation ---------------------------------------------
+
+def baseline_steps(wall: WallConfig) -> list[dict]:
+    """Ordered scene steps that recall the wall's 'normal' baseline — the
+    known-good reference all chaos deviates from and returns to:
+      1. source grid mode (IR via the IPCP),
+      2. builder MGP preset(s) + the combiner preset,
+      3. identity DMS routing (source→builders, builders→combiner, combiner→out).
+
+    Returned as plain step dicts (target/action/parameters/note) so this stays
+    free of the scenes module. The source-mode step is IR-via-IPCP and stays
+    un-fireable until the EIR scan wires it — present + dry-runnable regardless.
+    """
+    spec = wall.layout
+    steps: list[dict] = []
+
+    steps.append({"target": wall.source_device, "action": "set_wall_mode",
+                  "parameters": {"tiles": wall.tiles},
+                  "note": f"{spec.rows}×{spec.cols} mode — IR via IPCP (pending EIR scan)"})
+
+    if wall.is_single_mgp:
+        mgp = wall.combiner_device or (wall.builder_devices[0] if wall.builder_devices else "")
+        if mgp:
+            steps.append({"target": mgp, "action": "recall_preset",
+                          "parameters": {"preset": spec.combiner_preset},
+                          "note": "one MGP builds + assembles"})
+    else:
+        for builder in wall.builder_devices[:spec.builders_used]:
+            steps.append({"target": builder, "action": "recall_preset",
+                          "parameters": {"preset": spec.builder_preset},
+                          "note": "builder row/col preset"})
+        if wall.combiner_device:
+            steps.append({"target": wall.combiner_device, "action": "recall_preset",
+                          "parameters": {"preset": spec.combiner_preset},
+                          "note": "combiner assemble preset"})
+
+    # Identity DMS routing (moves/scrambles are deltas on this).
+    p = wall.ports
+    for i in range(wall.tiles):
+        port = p.source_base + i
+        steps.append({"target": wall.dms_device, "action": "tie",
+                      "parameters": {"input": port, "output": port},
+                      "note": f"source tile {i + 1} through DMS"})
+    if not wall.is_single_mgp:
+        for b in range(spec.builders_used):
+            port = p.builder_return_base + b
+            steps.append({"target": wall.dms_device, "action": "tie",
+                          "parameters": {"input": port, "output": port},
+                          "note": f"builder {b + 1} → combiner"})
+        steps.append({"target": wall.dms_device, "action": "tie",
+                      "parameters": {"input": p.combiner_out, "output": p.combiner_out},
+                      "note": "combiner → wall"})
+    return steps

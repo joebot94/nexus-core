@@ -259,3 +259,15 @@ Device-control code was instead re-homed conceptually from **joebot-lab**
     bench-measured rate ceilings (input-remap 15Hz verified; rest TBD).
   - 14 tests; 109 total. Next: `/wall/*` endpoints + generate wall scenes from a
     resolved wall (source-mode IPCP step + per-tile paths) + GlitchBoard Wall Cue.
+
+## v0.14.0 (2026-07-11, local — NAS still runs v0.4.0)
+
+- **Video-wall baseline scene generation** — `POST /wall/videowall/baseline-scene`
+  turns a wall config into the recallable "normal" baseline: source grid-mode
+  (IR via IPCP), builder/combiner MGP presets, identity DMS routing. Saved as
+  `scene.videowall-baseline`; dry-runnable. `videowall.baseline_steps()` builds
+  the ordered steps (single-MGP walls stay compact — one preset, no return trip).
+- **Scenes/groups now resilient per-step** — one unsupported/invalid/unknown
+  step (e.g. the not-yet-wired IR source-mode) is recorded as a failed step and
+  the recall CONTINUES instead of aborting. New `_run_step` helper shared by
+  scene recall + group fan-out. 4 new tests; 115 total.

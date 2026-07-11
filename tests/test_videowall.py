@@ -170,3 +170,51 @@ async def test_videowall_plan_endpoint_resolves_all_tiles(client):
 async def test_videowall_plan_rejects_bad_grid(client):
     r = await client.post("/api/v1/wall/videowall/plan", json={"tiles": 7})
     assert r.status_code == 422
+
+
+# ---- baseline scene generation ---------------------------------------------
+
+def test_baseline_steps_shape():
+    from nexus.videowall import baseline_steps
+    steps = baseline_steps(_wall_3x3())
+    actions = [s["action"] for s in steps]
+    assert actions[0] == "set_wall_mode"                 # source grid mode first
+    assert actions.count("recall_preset") == 4           # 3 builders + 1 combiner
+    assert actions.count("tie") == 9 + 3 + 1             # source(9) + returns(3) + out(1)
+
+
+def test_single_mgp_baseline_is_compact():
+    from nexus.videowall import WallConfig, baseline_steps
+    wall = WallConfig(tiles=4, builder_devices=["device.mgp.1"],
+                      combiner_device="device.mgp.1", source_device="src")
+    actions = [s["action"] for s in baseline_steps(wall)]
+    assert actions.count("recall_preset") == 1           # one MGP does all
+    assert actions.count("tie") == 4                     # 4 source ties, no return trip
+
+
+@pytest.mark.asyncio
+async def test_videowall_baseline_scene_generated_and_saved(client):
+    r = await client.post("/api/v1/wall/videowall/baseline-scene", json={
+        "tiles": 9, "signal": "digital",
+        "builder_devices": ["device.mgp.1", "device.mgp.2", "device.mgp.3"],
+        "combiner_device": "device.mgp.5", "source_device": "wallctl",
+        "dms_device": "device.dms.main"})
+    assert r.status_code == 200
+    assert r.json()["scene"]["id"] == "scene.videowall-baseline"
+    listed = await client.get("/api/v1/scenes")
+    assert any(s["id"] == "scene.videowall-baseline" for s in listed.json())
+
+
+@pytest.mark.asyncio
+async def test_videowall_baseline_recall_is_resilient(client):
+    """The IR source-mode step isn't wired yet, so it must fail GRACEFULLY —
+    the recall completes and records it, never aborts the whole scene."""
+    await client.post("/api/v1/wall/videowall/baseline-scene", json={
+        "tiles": 9, "builder_devices": ["device.mgp.1"],
+        "combiner_device": "device.mgp.1", "source_device": "wallctl",
+        "dms_device": "device.dms.main"})
+    r = await client.post("/api/v1/scenes/scene.videowall-baseline/recall")
+    assert r.status_code == 200                          # NOT aborted by the unsupported step
+    results = r.json()["results"]
+    assert results[0]["action"] == "set_wall_mode" and results[0]["ok"] is False
+    assert any(x["ok"] for x in results)                 # real steps still fired

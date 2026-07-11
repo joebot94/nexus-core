@@ -302,6 +302,21 @@ async def _run_action(ctx, entry: DeviceEntry, action: str,
     return response
 
 
+async def _run_step(ctx, device_id: str, action: str, parameters: dict) -> dict:
+    """Per-step execution for scenes/groups. NEVER raises — an unknown device or
+    an unsupported/invalid action is recorded as a failed step so one bad step
+    doesn't abort the whole batch (e.g. a not-yet-wired IR source-mode step)."""
+    entry = ctx.registry.get(device_id)
+    if entry is None:
+        return {"target": device_id, "action": action, "ok": False,
+                "error": "unknown device (not in registry)"}
+    try:
+        return (await _run_action(ctx, entry, action, parameters)).model_dump()
+    except HTTPException as exc:
+        return {"target": device_id, "action": action, "ok": False,
+                "error": f"{exc.status_code}: {exc.detail}"}
+
+
 @router.get("/groups", dependencies=[Depends(require_token)])
 def list_groups(request: Request):
     """Named aliases for sets of device targets. Post one action to a group and
@@ -317,15 +332,8 @@ async def group_action(request: Request, group_id: str, body: GroupActionRequest
     targets = ctx.scenes.resolve_group(group_id)
     if targets is None:
         raise HTTPException(404, f"unknown group: {group_id}")
-    results = []
-    for device_id in targets:
-        entry = ctx.registry.get(device_id)
-        if entry is None:
-            results.append({"target": device_id, "ok": False,
-                            "error": "unknown device (not in registry)"})
-            continue
-        resp = await _run_action(ctx, entry, body.action, body.parameters)
-        results.append(resp.model_dump())
+    results = [await _run_step(ctx, device_id, body.action, body.parameters)
+               for device_id in targets]
     ok = bool(results) and all(r.get("ok") for r in results)
     ctx.events.emit("group_action", group_id,
                     f"group {group_id}: {body.action} → {len(results)} member(s) "
@@ -444,6 +452,44 @@ def videowall_plan(request: Request, body: VideowallPlanRequest):
             "combiner_preset": spec.combiner_preset, "resolved": resolved}
 
 
+@router.post("/wall/videowall/baseline-scene", dependencies=[Depends(require_token)])
+def videowall_baseline_scene(request: Request, body: VideowallPlanRequest):
+    """Generate the video wall's 'normal' baseline (source grid-mode, builder/
+    combiner MGP presets, identity DMS routing) from a wall config and save it as
+    `scene.videowall-baseline`. Fires nothing — recall/dry-run via /scenes. The
+    source-mode step is IR-via-IPCP (pending the EIR scan), so it's dry-runnable
+    but not yet live-fireable; scene recall records it as a failed step and keeps
+    going rather than aborting."""
+    from ..scenes import Scene, SceneStep
+    from ..videowall import (Orientation, Signal, VideowallError, WallConfig,
+                             baseline_steps)
+    ctx = _ctx(request)
+    try:
+        wall = WallConfig(
+            tiles=body.tiles, orientation=Orientation(body.orientation),
+            signal=Signal(body.signal), builder_devices=body.builder_devices,
+            combiner_device=body.combiner_device, source_device=body.source_device,
+            mtpx_devices=body.mtpx_devices, dms_device=body.dms_device,
+            matrix_device=body.matrix_device, smx_device=body.smx_device)
+        steps = baseline_steps(wall)
+    except VideowallError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(422, f"invalid orientation/signal: {exc}") from exc
+
+    scene = Scene(id="scene.videowall-baseline",
+                  label=f"Videowall baseline ({wall.layout.rows}×{wall.layout.cols} {body.signal})",
+                  notes="Generated from a wall config. Source grid-mode is IR via "
+                        "the IPCP (pending EIR scan); the rest is MGP presets + DMS "
+                        "identity routing. Dry-run freely; scrambles layer on top.",
+                  steps=[SceneStep(**s) for s in steps])
+    ctx.scenes.upsert_scene(scene)
+    ctx.events.emit("nexus", "nexus-core",
+                    f"generated {scene.id} — {len(scene.steps)} steps from videowall config")
+    return {"ok": True, "scene": scene.model_dump(),
+            "hint": "dry-run: POST /scenes/scene.videowall-baseline/recall?dry_run=true"}
+
+
 @router.get("/scenes", dependencies=[Depends(require_token)])
 def list_scenes(request: Request):
     """Named, ordered cross-device recalls — the baseline + chaos deltas."""
@@ -469,15 +515,8 @@ async def recall_scene(request: Request, scene_id: str, dry_run: bool = False):
                            "parameters": s.parameters,
                            "known_device": s.target in known} for s in steps]}
 
-    results = []
-    for step in steps:
-        entry = ctx.registry.get(step.target)
-        if entry is None:
-            results.append({"target": step.target, "ok": False,
-                            "error": "unknown device (not in registry)"})
-            continue
-        resp = await _run_action(ctx, entry, step.action, step.parameters)
-        results.append(resp.model_dump())
+    results = [await _run_step(ctx, step.target, step.action, step.parameters)
+               for step in steps]
     ok = bool(results) and all(r.get("ok") for r in results)
     ctx.events.emit("scene_recall", scene_id,
                     f"scene {scene_id} ({scene.label}): {len(results)} step(s) "
