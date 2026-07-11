@@ -11,6 +11,7 @@ only (see api/routes.py).
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -54,14 +55,54 @@ class ActionResult:
 class DeviceAdapter:
     device_type = "generic"
     actions: dict[str, ActionSpec] = {}
+    # A stable, UI-facing description of the physical shape of the device.
+    # It is deliberately separate from `actions`: an action says what a device
+    # can do, while a hardware profile says what is installed right now.  An
+    # adapter may replace the configured fallback with a read-only hardware
+    # discovery result once its model-specific query has been bench-verified.
+    profile_defaults: dict[str, Any] = {}
 
     def __init__(self, config, transport) -> None:
         self.config = config
         self.transport = transport
+        # Subclasses refine parameter ranges per installed hardware. Never
+        # mutate the class-level action table or another device could inherit a
+        # different rack's limits.
+        self.actions = copy.deepcopy(self.actions)
+
+    def hardware_profile(self) -> dict[str, Any]:
+        """Return the best known physical profile without touching hardware.
+
+        Registry-configured values are an honest fallback while a device is
+        offline or while a particular model's discovery query is unverified.
+        Consumers must inspect `source` rather than mistaking this for a live
+        readback.
+        """
+        profile = copy.deepcopy(self.profile_defaults)
+        configured = getattr(self.config, "hardware_profile", {}) or {}
+        for key, value in configured.items():
+            # Profiles intentionally stay JSON-shaped, so replacing a nested
+            # list such as installed SMX planes is safer than a clever merge.
+            profile[key] = copy.deepcopy(value)
+        profile.setdefault("kind", "generic")
+        profile.setdefault("source", "configured")
+        profile.setdefault("input_presence", "unsupported")
+        profile.setdefault("label_readback", "unsupported")
+        profile.setdefault("notes", "")
+        return profile
+
+    def _set_action_range(self, action: str, parameter: str, upper: int) -> None:
+        """Constrain an action to the installed profile for this one device."""
+        spec = self.actions.get(action)
+        if spec and parameter in spec.params:
+            rules = spec.params[parameter]
+            lower = rules.get("range", (1, upper))[0]
+            rules["range"] = (lower, upper)
 
     def capabilities(self) -> dict[str, Any]:
         return {
             "device_type": self.device_type,
+            "hardware_profile": self.hardware_profile(),
             "actions": [
                 {
                     "action": name,

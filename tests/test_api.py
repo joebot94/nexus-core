@@ -74,6 +74,16 @@ async def test_probe_and_capabilities(client):
 
 
 @pytest.mark.asyncio
+async def test_hardware_profile_is_exposed_without_sending_commands(client):
+    r = await client.get("/api/v1/devices/device.dms.main/hardware-profile")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["profile"]["kind"] == "matrix"
+    assert body["profile"]["inputs"] == body["profile"]["outputs"] == 36
+    assert body["profile"]["source"] == "configured"
+
+
+@pytest.mark.asyncio
 async def test_raw_endpoint_is_guarded(client):
     r = await client.post("/api/v1/devices/device.mgp.sim/raw",
                           json={"command": "Q"})

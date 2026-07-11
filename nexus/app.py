@@ -15,6 +15,7 @@ from .api.routes import router
 from .api.ws import ws_router
 from .config import Settings
 from .events import EventBus
+from .lab import LabTelemetryClient
 from .registry import Registry
 from .state import StateStore
 
@@ -27,6 +28,7 @@ class Context:
     registry: Registry
     state: StateStore
     events: EventBus
+    lab: LabTelemetryClient
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -36,6 +38,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         registry=Registry(settings),
         state=StateStore(),
         events=EventBus(settings.event_log_path),
+        lab=LabTelemetryClient(settings.lab_url),
     )
 
     @asynccontextmanager

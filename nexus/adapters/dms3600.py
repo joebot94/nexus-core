@@ -1,4 +1,4 @@
-"""Extron DMS 3600 adapter (36 in × 24 out digital media switcher).
+"""Extron DMS 3600 adapter (36 in × 36 out digital media switcher).
 
 Wire strings per the deployed joebot-lab `dms_control.py` (which polls the
 real unit at 10.0.0.13): tie `{in}*{out}!`, preset recall `{n}.`.
@@ -16,6 +16,15 @@ _TIE_QUERY_RE = re.compile(r"(?:In\s*)?(\d{1,2})", re.IGNORECASE)
 
 class DMS3600Adapter(ExtronSISAdapter):
     device_type = "dms3600"
+    profile_defaults = {
+        "kind": "matrix",
+        "inputs": 36,
+        "outputs": 36,
+        "planes": [{"id": "all", "label": "All signals", "installed": True}],
+        "input_presence": "supported_pending_query_validation",
+        "label_readback": "unknown",
+        "notes": "Installed 36×36 card population; live discovery query still needs verification.",
+    }
 
     actions = {
         "recall_preset": ActionSpec(
@@ -26,20 +35,28 @@ class DMS3600Adapter(ExtronSISAdapter):
             summary="Tie input to output (`in*out!`)",
             params={
                 "input": {"type": "int", "range": (1, 36), "required": True},
-                "output": {"type": "int", "range": (1, 24), "required": True},
+                "output": {"type": "int", "range": (1, 36), "required": True},
             },
         ),
         "untie": ActionSpec(
             summary="Untie an output (`0*out!`)",
-            params={"output": {"type": "int", "range": (1, 24), "required": True}},
+            params={"output": {"type": "int", "range": (1, 36), "required": True}},
         ),
         "query_tie": ActionSpec(
             summary="Query which input feeds an output (`out!`)",
-            params={"output": {"type": "int", "range": (1, 24), "required": True}},
+            params={"output": {"type": "int", "range": (1, 36), "required": True}},
         ),
         "query_firmware": ActionSpec(summary="Query firmware version (`Q`)"),
         "query_part_number": ActionSpec(summary="Query part number (`N`)"),
     }
+
+    def __init__(self, config, transport) -> None:
+        super().__init__(config, transport)
+        profile = self.hardware_profile()
+        self._set_action_range("tie", "input", int(profile.get("inputs", 36)))
+        self._set_action_range("tie", "output", int(profile.get("outputs", 36)))
+        self._set_action_range("untie", "output", int(profile.get("outputs", 36)))
+        self._set_action_range("query_tie", "output", int(profile.get("outputs", 36)))
 
     async def do_tie(self, input: int, output: int) -> ActionResult:
         result = await self.send(f"{input}*{output}!")
@@ -72,13 +89,13 @@ class DMS3600Adapter(ExtronSISAdapter):
         def respond(self, command: str) -> str:
             if match := re.fullmatch(r"(\d{1,2})\*(\d{1,2})!", command):
                 inp, out = int(match.group(1)), int(match.group(2))
-                if not (0 <= inp <= 36 and 1 <= out <= 24):
+                if not (0 <= inp <= 36 and 1 <= out <= 36):
                     return "E01"
                 self.ties[out] = inp
                 return f"Out{out:02d} In{inp:02d} All"
             if match := re.fullmatch(r"(\d{1,2})!", command):
                 out = int(match.group(1))
-                if not 1 <= out <= 24:
+                if not 1 <= out <= 36:
                     return "E12"
                 return f"{self.ties.get(out, 0):02d}"
             return super().respond(command)

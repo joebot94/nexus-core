@@ -71,7 +71,19 @@ async def test_smx_plane_ties():
 @pytest.mark.asyncio
 async def test_dms_tie_and_recall():
     adapter = _sim(DMS3600Adapter)
-    tie = await adapter.execute("tie", {"input": 36, "output": 24})
-    assert tie.ok and tie.state == {"output_24": 36}
+    tie = await adapter.execute("tie", {"input": 36, "output": 36})
+    assert tie.ok and tie.state == {"output_36": 36}
     recall = await adapter.execute("recall_preset", {"preset": 1})
     assert recall.ok and recall.state == {"preset": 1}
+
+
+@pytest.mark.asyncio
+async def test_profiles_constrain_each_installed_matrix():
+    config = DeviceConfig(device_id="device.dms.small", type="dms3600",
+                          hardware_profile={"inputs": 24, "outputs": 24})
+    adapter = DMS3600Adapter(config, SimTransport(DMS3600Adapter.Simulator()))
+    profile = adapter.hardware_profile()
+    assert profile["inputs"] == 24 and profile["outputs"] == 24
+    from nexus.adapters.base import InvalidParams
+    with pytest.raises(InvalidParams, match="range 1-24"):
+        await adapter.execute("tie", {"input": 25, "output": 1})

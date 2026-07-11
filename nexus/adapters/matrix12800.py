@@ -19,6 +19,15 @@ _TIE_QUERY_RE = re.compile(r"(?:In\s*)?(\d{1,3})", re.IGNORECASE)
 
 class Matrix12800Adapter(ExtronSISAdapter):
     device_type = "matrix12800"
+    profile_defaults = {
+        "kind": "matrix",
+        "inputs": 128,
+        "outputs": 128,
+        "planes": [{"id": "all", "label": "All signals", "installed": True}],
+        "input_presence": "supported_pending_query_validation",
+        "label_readback": "unknown",
+        "notes": "Configured maximum; replace with read-only chassis discovery when validated.",
+    }
 
     actions = {
         "recall_preset": ActionSpec(
@@ -43,6 +52,14 @@ class Matrix12800Adapter(ExtronSISAdapter):
         "query_firmware": ActionSpec(summary="Query firmware version (`Q`)"),
         "query_part_number": ActionSpec(summary="Query part number (`N`)"),
     }
+
+    def __init__(self, config, transport) -> None:
+        super().__init__(config, transport)
+        profile = self.hardware_profile()
+        self._set_action_range("tie", "input", int(profile.get("inputs", 128)))
+        self._set_action_range("tie", "output", int(profile.get("outputs", 128)))
+        self._set_action_range("untie", "output", int(profile.get("outputs", 128)))
+        self._set_action_range("query_tie", "output", int(profile.get("outputs", 128)))
 
     async def do_tie(self, input: int, output: int) -> ActionResult:
         result = await self.send(f"{input}*{output}!")

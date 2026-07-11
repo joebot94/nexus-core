@@ -28,6 +28,20 @@ _PLANE_PARAM = {"enum": PLANE_ORDER, "required": False, "default": "00"}
 
 class SMXAdapter(ExtronSISAdapter):
     device_type = "smx"
+    profile_defaults = {
+        "kind": "multiplane_matrix",
+        "inputs": 16,
+        "outputs": 16,
+        "planes": [
+            {"id": "00", "label": "VGA", "signal": "video", "tie_suffix": "&", "installed": True},
+            {"id": "01", "label": "S-Video", "signal": "video", "tie_suffix": "&", "installed": True},
+            {"id": "02", "label": "Video", "signal": "video", "tie_suffix": "&", "installed": True},
+            {"id": "04", "label": "Audio", "signal": "audio", "tie_suffix": "$", "installed": True},
+        ],
+        "input_presence": "supported_pending_query_validation",
+        "label_readback": "unknown",
+        "notes": "Current installed card planes; future installed planes extend this list.",
+    }
 
     actions = {
         "recall_preset": ActionSpec(
@@ -60,6 +74,25 @@ class SMXAdapter(ExtronSISAdapter):
         "query_part_number": ActionSpec(summary="Query part number (`N`)"),
     }
 
+    def __init__(self, config, transport) -> None:
+        super().__init__(config, transport)
+        profile = self.hardware_profile()
+        planes = [p for p in profile.get("planes", []) if p.get("installed", True)]
+        self.plane_suffixes = {str(p["id"]): str(p.get("tie_suffix", "&")) for p in planes if p.get("id")}
+        # Preserve the known working four-plane fallback if a legacy registry
+        # omits planes. A future card becomes data, not a Swift/Python rewrite.
+        if not self.plane_suffixes:
+            self.plane_suffixes = dict(PLANES)
+        self.plane_order = list(self.plane_suffixes)
+        self._set_action_range("tie", "input", int(profile.get("inputs", 16)))
+        self._set_action_range("tie", "output", int(profile.get("outputs", 16)))
+        self._set_action_range("tie_all_planes", "input", int(profile.get("inputs", 16)))
+        self._set_action_range("tie_all_planes", "output", int(profile.get("outputs", 16)))
+        self._set_action_range("query_tie", "output", int(profile.get("outputs", 16)))
+        for action in ("tie", "query_tie"):
+            self.actions[action].params["plane"]["enum"] = self.plane_order
+            self.actions[action].params["plane"]["default"] = self.plane_order[0]
+
     async def do_recall_preset(self, preset: int) -> ActionResult:
         result = await self.send(f"Rpr{preset:02d}")
         if result.ok:
@@ -70,7 +103,7 @@ class SMXAdapter(ExtronSISAdapter):
         return result
 
     async def do_tie(self, input: int, output: int, plane: str = "00") -> ActionResult:
-        result = await self.send(f"{plane}*{input}*{output}{PLANES[plane]}")
+        result = await self.send(f"{plane}*{input}*{output}{self.plane_suffixes[plane]}")
         if result.ok:
             result.state = {f"plane_{plane}_output_{output}": input}
         return result
@@ -81,8 +114,8 @@ class SMXAdapter(ExtronSISAdapter):
         last = ActionResult(ok=True)
         state: dict[str, int] = {}
         total_ms = 0
-        for plane in PLANE_ORDER:
-            last = await self.send(f"{plane}*{input}*{output}{PLANES[plane]}")
+        for plane in self.plane_order:
+            last = await self.send(f"{plane}*{input}*{output}{self.plane_suffixes[plane]}")
             total_ms += last.latency_ms
             if not last.ok:
                 last.latency_ms = total_ms

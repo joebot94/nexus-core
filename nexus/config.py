@@ -17,6 +17,12 @@ class Settings:
     token: str = field(default_factory=lambda: os.environ.get("NEXUS_TOKEN", ""))
     # Force every device into simulation regardless of registry flags.
     simulate_all: bool = field(default_factory=lambda: os.environ.get("NEXUS_SIMULATE", "") == "1")
+    # Optional read-only provider for a separately-running Joebot Lab. Empty
+    # by default: Nexus must work as a self-contained service on any install.
+    # A NAS deployment that wants to reuse Lab's existing poll cadence opts in
+    # with NEXUS_LAB_URL=http://127.0.0.1:8080.
+    lab_url: str = field(default_factory=lambda: os.environ.get(
+        "NEXUS_LAB_URL", "").rstrip("/"))
 
     @property
     def registry_path(self) -> Path:

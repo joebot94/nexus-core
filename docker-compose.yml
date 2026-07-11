@@ -9,6 +9,9 @@ services:
     environment:
       NEXUS_PORT: "8675"          # Jenny 📞
       NEXUS_DATA_DIR: /data
+      # Optional: reuse an already-running Joebot Lab's read-only telemetry
+      # rather than polling the same rack hardware twice.
+      # NEXUS_LAB_URL: http://127.0.0.1:8080
       # NEXUS_TOKEN: set-me-for-lan-auth
     volumes:
       - ./data:/data              # device_registry.jbt + rolling event log persist here

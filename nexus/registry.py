@@ -44,6 +44,7 @@ DEFAULT_DEVICES: list[dict[str, Any]] = [
                  "May prompt for a password on connect.",
         "enabled": True,
         "simulate": False,
+        "lab_device_id": "mx",
     },
     {
         "device_id": "device.dms.main",
@@ -56,6 +57,7 @@ DEFAULT_DEVICES: list[dict[str, Any]] = [
                  "Primary PSU unplugged — runs on redundant (degraded is normal).",
         "enabled": True,
         "simulate": False,
+        "lab_device_id": "dms",
     },
     {
         "device_id": "device.smx.main",
@@ -69,6 +71,7 @@ DEFAULT_DEVICES: list[dict[str, Any]] = [
                  "Was unreachable on the LAN as of early July 2026.",
         "enabled": True,
         "simulate": False,
+        "lab_device_id": "smx",
     },
     {
         "device_id": "device.mtpx.1",
@@ -135,6 +138,14 @@ class DeviceConfig(BaseModel):
     # (falling back to admin/admin, matching the lab's handshake).
     username: str = ""
     password: str = ""
+    # Physical topology and telemetry support. This is an explicit configured
+    # fallback until the adapter has a live, read-only discovery command for
+    # the particular model/card family. It lets every client draw only real,
+    # installed channels instead of assuming a largest-possible chassis.
+    hardware_profile: dict[str, Any] = Field(default_factory=dict)
+    # Optional ID in Joebot Lab's read-only telemetry API. If absent, Nexus
+    # falls back to the known family mapping while the registry is migrated.
+    lab_device_id: str = ""
 
 
 @dataclass

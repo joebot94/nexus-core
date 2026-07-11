@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from .. import VERSION
 from ..adapters.base import InvalidParams, UnsupportedAction
+from ..lab import DEFAULT_LAB_IDS, LabTelemetryError
 from ..registry import DeviceEntry
 from .models import ActionRequest, ActionResponse, DeviceOut, RawRequest
 
@@ -88,6 +89,44 @@ def get_device_state(request: Request, device_id: str):
 @router.get("/devices/{device_id}/capabilities", dependencies=[Depends(require_token)])
 def get_capabilities(request: Request, device_id: str):
     return _get_entry(request, device_id).adapter.capabilities()
+
+
+@router.get("/devices/{device_id}/hardware-profile", dependencies=[Depends(require_token)])
+def get_hardware_profile(request: Request, device_id: str):
+    """Read the best-known physical topology without sending any command.
+
+    `source=configured` is intentionally explicit: it is a safe fallback until
+    a model-specific, read-only discovery command has been live-verified.
+    Clients use this to size their UI and validate old show files.
+    """
+    entry = _get_entry(request, device_id)
+    return {
+        "device_id": device_id,
+        "status": entry.status,
+        "last_seen": entry.last_seen,
+        "profile": entry.adapter.hardware_profile(),
+    }
+
+
+@router.get("/devices/{device_id}/telemetry", dependencies=[Depends(require_token)])
+async def get_lab_telemetry(request: Request, device_id: str):
+    """Read Joebot Lab's existing poll result for one Nexus device.
+
+    This is intentionally a read-only relay, not a second device poller. It is
+    available only when an operator explicitly configures `NEXUS_LAB_URL`.
+    Standalone Nexus command/probe operation never depends on Lab; a future
+    Nexus-native telemetry scheduler will use the same normalized response
+    shape when Lab is absent.
+    """
+    entry = _get_entry(request, device_id)
+    lab_id = entry.config.lab_device_id or DEFAULT_LAB_IDS.get(entry.config.type, "")
+    if not lab_id:
+        raise HTTPException(404, f"no Joebot Lab mapping for {device_id}")
+    try:
+        telemetry = await _ctx(request).lab.device(lab_id)
+    except LabTelemetryError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    return {"device_id": device_id, "lab_device_id": lab_id, "telemetry": telemetry}
 
 
 @router.post("/devices/{device_id}/probe", dependencies=[Depends(require_token)])

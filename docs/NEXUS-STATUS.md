@@ -40,7 +40,7 @@ persistent connection pooling + unsolicited-response listening.
   them speaking SIS.
 - **New adapters**: Matrix 12800 (tie/untie/query per deployed lab code),
   SMX (RprNN presets — the family exception —, plane ties `PP*in*out&/$`),
-  DMS 3600 (36×24 ties), and generic **`extron_sis`** so any Extron box can
+  DMS 3600 (installed 36×36 ties), and generic **`extron_sis`** so any Extron box can
   join with just a registry entry.
 - **Transport handles login prompts** (Matrix/SMX may ask; answers like the
   lab's handshake, admin/admin fallback).
@@ -97,6 +97,16 @@ Device-control code was instead re-homed conceptually from **joebot-lab**
 
 - One-shot connect-per-command (~40–70 ms vs live MGP). Pooling = M4.
 - No polling loop — state updates only from acks/probes/queries.
+- **Joebot Lab telemetry relay (started locally, not NAS-deployed):** this is
+  strictly optional. If `NEXUS_LAB_URL` is configured, Nexus can relay the
+  NAS's established port-8080 read-only poller (SMX board/plane inventory,
+  input-presence dots, rails, and health) through `/devices/{id}/telemetry`.
+  A normal Nexus install has no Lab dependency; its future native telemetry
+  scheduler will use the same client contract when Lab is absent.
+- **GlitchBoard Show Check (local desktop work, not NAS-deployed):** consumes
+  Nexus telemetry only as optional read-only evidence. Its current matrix-route
+  preflight distinguishes present / absent / not checked / no sensor and keeps
+  the operator's explicit warn-or-skip policy separate from telemetry itself.
 - No unsolicited-response listening (needs persistent connections, M4).
 - Groups endpoint returns `[]` (shape reserved, lands M2).
 - Coordination plane (app registration, intents, scenes, recording) not
