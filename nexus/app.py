@@ -51,6 +51,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def warm_read_cache() -> None:
         """Keep current DMS snapshots hot; never route or save anything."""
         next_names = 0.0
+        # A dark unit must not be hammered: without this gate, a powered-off
+        # DMS costs 36 sequential 3s connect timeouts PER CYCLE. One failed
+        # probe instead parks the device for a minute before rechecking.
+        offline_until: dict[str, float] = {}
         while True:
             now = time.monotonic()
             for entry in ctx.registry.all():
@@ -64,6 +68,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 # DMS is the current interactive matrix. Polling all 36 ties
                 # every ten seconds is bounded and keeps its patch bay instant.
                 if entry.config.type == "dms3600":
+                    if now < offline_until.get(device_id, 0.0):
+                        continue
+                    reachable = await entry.adapter.probe()
+                    entry.mark(reachable.ok)
+                    if not reachable.ok:
+                        offline_until[device_id] = now + 60.0
+                        continue
                     ties: dict[int, int] = {}
                     for output in range(1, int(entry.adapter.hardware_profile().get("outputs", 36)) + 1):
                         result = await entry.adapter.execute("query_tie", {"output": output})
