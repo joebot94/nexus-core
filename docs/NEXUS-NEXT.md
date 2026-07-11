@@ -47,6 +47,11 @@
   volunteers unsolicited (front-panel preset recall while Nexus listens).
 - Polling where appropriate; `degraded` status semantics (pool `stats` are
   exposed on the transport — surface consecutive failures in /devices).
+- ~~Parallel lane pool for MTPX bursts~~ ✅ v0.10.0 — `LanePoolTransport`
+  (`connection: "lanes"`, N concurrent sockets, ported from MTPXControl).
+  Fan-out is transport-swappable so the MTPX skew batch path uses it with no
+  adapter change. **Bench: confirm the real MTPX accepts ~10 concurrent
+  sessions and tune lane_count; verify burst latency vs single socket.**
 - Event log rotation/retention (daily / 100MB / 7 days per the vision doc).
 
 ## Later

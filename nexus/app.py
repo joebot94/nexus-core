@@ -25,7 +25,7 @@ from .read_cache import ReadCache
 from .registry import Registry
 from .scenes import SceneStore
 from .state import StateStore
-from .transports import PooledTransport
+from .transports import LanePoolTransport, PooledTransport
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
@@ -142,8 +142,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with suppress(asyncio.CancelledError):
             await warm_task
         for entry in ctx.registry.all():
-            if isinstance(entry.adapter.transport, PooledTransport):
-                await entry.adapter.transport.aclose()
+            transport = entry.adapter.transport
+            if isinstance(transport, (PooledTransport, LanePoolTransport)):
+                await transport.aclose()
         ctx.events.emit("nexus", "nexus-core", "Nexus Core shutting down")
         ctx.events.flush()
 

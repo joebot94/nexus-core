@@ -210,3 +210,22 @@ Device-control code was instead re-homed conceptually from **joebot-lab**
   and MGP assignment — read-only planning truth for a future graphical wall
   view and for racking the cables. Default registry ships example placement on
   the two MTPX units (2×2). 3 new tests; 85 total.
+
+## v0.10.0 (2026-07-11, local — NAS still runs v0.4.0)
+
+- **Parallel lane pool** (`transports/lanes.py`, ported from Joe's MTPXControl
+  `MTPXNetworkService`). The MTPX fires a big skew burst fastest across several
+  concurrent sockets, not one serialized socket. `LanePoolTransport` opens N
+  lanes (default 10, ≤32), and `exchange_batch` round-robins the commands into
+  one chunk per lane and writes them **concurrently** (`asyncio.gather`) — a
+  burst of M commands leaves in ~M/N serial writes. Fire-and-forget: a
+  completed write is success (MTPX no-response mode), echoes drained
+  best-effort, dead lanes dropped mid-burst.
+- Interface-compatible, so **no adapter change** — the MTPX adapter's existing
+  `exchange_batch` skew path fans across lanes automatically when the device's
+  registry `connection` is `"lanes"`. Registry: `connection: "lanes"` +
+  `lane_count`; both default MTPX units now use 10 lanes. MGP keeps its single
+  pooled socket (right for a stateful device with front-panel feedback).
+- 7 new tests against a multi-connection sim that proves the fan-out (peak
+  concurrent sockets, per-lane command spread, silent-burst success); 92 total.
+  Live lane-count tuning is a bench item — 10 is Joe's MTPXControl figure.

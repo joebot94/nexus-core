@@ -17,7 +17,8 @@ from pydantic import BaseModel, Field
 from . import jbt
 from .adapters import ADAPTER_TYPES, DeviceAdapter
 from .config import Settings
-from .transports import PooledTransport, PoolPolicy, SimTransport, TCPTransport
+from .transports import (LanePoolTransport, PooledTransport, PoolPolicy,
+                         SimTransport, TCPTransport)
 
 # Status vocabulary: unknown (never probed), online, offline, degraded.
 DEFAULT_DEVICES: list[dict[str, Any]] = [
@@ -94,6 +95,9 @@ DEFAULT_DEVICES: list[dict[str, Any]] = [
         "wall_model": "MTPX Plus 1616",
         "wall_slots": ["r1c1", "r1c2"],   # example placement; adjust when racked
         "wall_passes": 2,
+        # Fan skew bursts across concurrent sockets (MTPX combined mode).
+        "connection": "lanes",
+        "lane_count": 10,
     },
     {
         "device_id": "device.mtpx.2",
@@ -109,6 +113,8 @@ DEFAULT_DEVICES: list[dict[str, Any]] = [
         "wall_model": "MTPX Plus 128",
         "wall_slots": ["r2c1", "r2c2"],   # example placement; adjust when racked
         "wall_passes": 2,
+        "connection": "lanes",
+        "lane_count": 10,
     },
     {
         "device_id": "device.mtpx.sim",
@@ -151,7 +157,12 @@ class DeviceConfig(BaseModel):
     password: str = ""
     # "oneshot" = connect per command (safe default). "pooled" = one held
     # socket: fast sends, gap-aware recycle, and unsolicited listening.
+    # "lanes" = N concurrent sockets: fan a skew burst across them (MTPX combined
+    # mode — ported from Joe's MTPXControl). See lane_count.
     connection: str = "oneshot"
+    # For connection: "lanes" — how many concurrent sockets to fan a burst
+    # across (MTPX ~10; clamped 1-32).
+    lane_count: int = 10
     # Pooled policy, from measured behavior (MGP self-closes at ~310s idle):
     # recycle a socket idle past this many seconds…
     idle_recycle_s: float = 280.0
@@ -233,6 +244,11 @@ class Registry:
                     policy=PoolPolicy(idle_recycle_s=config.idle_recycle_s,
                                       keepalive_s=config.keepalive_s,
                                       rotate_after_s=config.rotate_after_s))
+            elif config.connection == "lanes":
+                transport = LanePoolTransport(
+                    config.host, config.port,
+                    username=config.username, password=config.password,
+                    lane_count=config.lane_count)
             else:
                 if config.connection != "oneshot":
                     warnings.append(f"{config.device_id}: unknown connection "
