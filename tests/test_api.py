@@ -94,6 +94,22 @@ async def test_name_bank_endpoint_reads_a_small_simulated_range(client):
 
 
 @pytest.mark.asyncio
+async def test_route_bank_reads_current_dms_ties_without_mutating_routes(client):
+    # Set one simulated tie through the normal action path first.
+    set_tie = await client.post("/api/v1/actions", json={
+        "target": "device.dms.main", "action": "tie",
+        "parameters": {"input": 18, "output": 4}})
+    assert set_tie.status_code == 200 and set_tie.json()["ok"]
+
+    r = await client.get("/api/v1/devices/device.dms.main/routes", params={
+        "start": 1, "count": 8})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] and body["ties"]["4"] == 18
+    assert body["count"] == 8 and body["plane"] is None
+
+
+@pytest.mark.asyncio
 async def test_raw_endpoint_is_guarded(client):
     r = await client.post("/api/v1/devices/device.mgp.sim/raw",
                           json={"command": "Q"})

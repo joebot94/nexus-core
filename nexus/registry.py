@@ -53,7 +53,7 @@ DEFAULT_DEVICES: list[dict[str, Any]] = [
         "host": "10.0.0.13",
         "port": 23,
         "location": "Rack 1",
-        "notes": "36x24. Wire syntax from deployed joebot-lab dms_control.py. "
+        "notes": "36x36 installed card population. Wire syntax from deployed joebot-lab dms_control.py. "
                  "Primary PSU unplugged — runs on redundant (degraded is normal).",
         "enabled": True,
         "simulate": False,

@@ -155,6 +155,56 @@ async def get_lab_telemetry(request: Request, device_id: str):
     return {"device_id": device_id, "lab_device_id": lab_id, "telemetry": telemetry}
 
 
+@router.get("/devices/{device_id}/routes", dependencies=[Depends(require_token)])
+async def read_route_bank(request: Request, device_id: str, start: int = 1, count: int = 32,
+                          plane: str | None = None):
+    """Read a bounded bank of current output ties without changing a route.
+
+    This is deliberately serial: matrix switchers are often one-command-at-a-
+    time, and a full 128-output sweep would be rude. Clients request only the
+    visible bank (DMS can safely request all 36 in two or fewer calls). The
+    adapter's model-specific `query_tie` parser remains the source of truth.
+    """
+    entry = _get_entry(request, device_id)
+    profile = entry.adapter.hardware_profile()
+    outputs = int(profile.get("outputs") or 0)
+    if outputs < 1:
+        raise HTTPException(400, f"{device_id} does not report matrix outputs")
+    if not 1 <= start <= outputs:
+        raise HTTPException(422, f"start must be in range 1-{outputs}")
+    if not 1 <= count <= 32:
+        raise HTTPException(422, "count must be in range 1-32")
+    stop = min(outputs, start + count - 1)
+    ties: dict[str, int] = {}
+    errors: dict[str, str] = {}
+    for output in range(start, stop + 1):
+        params: dict[str, object] = {"output": output}
+        if plane is not None:
+            params["plane"] = plane
+        try:
+            result = await entry.adapter.execute("query_tie", params)
+        except UnsupportedAction as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except InvalidParams as exc:
+            raise HTTPException(422, str(exc)) from exc
+        entry.mark(result.ok or bool(result.response))
+        input_value = result.state.get(f"output_{output}")
+        if result.ok and isinstance(input_value, int):
+            ties[str(output)] = input_value
+        elif not result.ok:
+            errors[str(output)] = result.error or "query failed"
+    return {
+        "ok": not errors,
+        "device_id": device_id,
+        "start": start,
+        "count": stop - start + 1,
+        "plane": plane,
+        "ties": ties,
+        "errors": errors,
+        "verified": entry.adapter.actions["query_tie"].verified,
+    }
+
+
 @router.post("/devices/{device_id}/probe", dependencies=[Depends(require_token)])
 async def probe_device(request: Request, device_id: str):
     ctx = _ctx(request)
