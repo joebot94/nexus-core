@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 
 from .base import ActionResult, ActionSpec
-from .extron_sis import ExtronSISAdapter
+from .extron_sis import ExtronSISAdapter, name_bank_action
 
 _TIE_QUERY_RE = re.compile(r"(?:In\s*)?(\d{1,2})", re.IGNORECASE)
 
@@ -48,6 +48,7 @@ class DMS3600Adapter(ExtronSISAdapter):
         ),
         "query_firmware": ActionSpec(summary="Query firmware version (`Q`)"),
         "query_part_number": ActionSpec(summary="Query part number (`N`)"),
+        "read_name_bank": name_bank_action(["input", "output", "preset"]),
     }
 
     def __init__(self, config, transport) -> None:
@@ -78,6 +79,14 @@ class DMS3600Adapter(ExtronSISAdapter):
                 result.state = {f"output_{output}": int(match.group(1))}
                 result.state_source = "query"
         return result
+
+    async def do_read_name_bank(self, kind: str, start: int = 1, count: int = 32) -> ActionResult:
+        profile = self.hardware_profile()
+        return await self.read_name_bank(kind, start, count, {
+            "input": int(profile.get("inputs", 36)),
+            "output": int(profile.get("outputs", 36)),
+            "preset": int(profile.get("presets", 32)),
+        })
 
     class Simulator(ExtronSISAdapter.Simulator):
         banner = "(c) Copyright 2024, Extron Electronics, DMS 3600, V1.08, 60-0000-13"

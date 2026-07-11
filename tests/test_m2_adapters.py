@@ -78,6 +78,24 @@ async def test_dms_tie_and_recall():
 
 
 @pytest.mark.asyncio
+async def test_name_banks_are_bounded_and_preserve_kind():
+    matrix = _sim(Matrix12800Adapter)
+    names = await matrix.execute("read_name_bank", {"kind": "input", "start": 1, "count": 3})
+    assert names.ok
+    assert names.state["names"]["input"] == {
+        "1": "Input 1", "2": "Input 2", "3": "Input 3"}
+    with pytest.raises(Exception, match="range 1-128"):
+        await matrix.execute("read_name_bank", {"kind": "input", "start": 127, "count": 3})
+
+    smx = _sim(SMXAdapter)
+    io = await smx.execute("read_name_bank", {"kind": "output", "start": 1, "count": 2})
+    assert io.ok and io.state["names"]["output"]["2"] == "Output 2"
+    from nexus.adapters.base import InvalidParams
+    with pytest.raises(InvalidParams, match="one of"):
+        await smx.execute("read_name_bank", {"kind": "preset", "start": 1, "count": 1})
+
+
+@pytest.mark.asyncio
 async def test_profiles_constrain_each_installed_matrix():
     config = DeviceConfig(device_id="device.dms.small", type="dms3600",
                           hardware_profile={"inputs": 24, "outputs": 24})

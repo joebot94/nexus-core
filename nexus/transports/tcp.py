@@ -31,6 +31,7 @@ class TransportError(Exception):
 
 class Transport(Protocol):
     async def exchange(self, command: str, terminator: str = "\r") -> TransportReply: ...
+    async def exchange_sequence(self, commands: list[str], terminator: str = "\r") -> list[TransportReply]: ...
 
 
 class TCPTransport:
@@ -128,6 +129,48 @@ class TCPTransport:
             except Exception:
                 pass
 
+    async def exchange_sequence(self, commands: list[str], terminator: str = "\r") -> list[TransportReply]:
+        """Send read/query commands one at a time over ONE authenticated socket.
+
+        Name-bank sync uses this rather than reconnecting once per channel. Each
+        command still gets its own reply, unlike `exchange_batch`, so callers
+        can safely pair a channel number with its returned label.
+        """
+        if not commands:
+            return []
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(self.host, self.port), self.connect_timeout)
+        except (OSError, asyncio.TimeoutError) as exc:
+            raise TransportError(f"connect failed: {str(exc) or 'timed out / unreachable'}") from exc
+        try:
+            banner_raw = await self._read_window(reader, self.banner_window)
+            banner = banner_raw.decode(errors="replace").strip()
+            prompt = banner.lower()
+            for needle, credential in (("password", self.password or "admin"),
+                                       ("login", self.username or "admin")):
+                if needle in prompt:
+                    writer.write((credential + "\r").encode())
+                    await writer.drain()
+                    banner = (await self._read_window(reader, 0.4)).decode(errors="replace").strip()
+                    prompt = banner.lower()
+            replies: list[TransportReply] = []
+            for command in commands:
+                start = time.monotonic()
+                writer.write((command + terminator).encode())
+                await writer.drain()
+                raw = await self._read_line(reader, self.read_timeout)
+                replies.append(TransportReply(
+                    banner=banner, response=raw.decode(errors="replace").strip(), raw=raw,
+                    latency_ms=int((time.monotonic() - start) * 1000)))
+            return replies
+        finally:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except Exception:
+                pass
+
     @staticmethod
     async def _read_window(reader: asyncio.StreamReader, window: float) -> bytes:
         """Best-effort read for a fixed window — some devices stay silent."""
@@ -194,3 +237,6 @@ class SimTransport:
             raw=("\r\n".join(echoes) + "\r\n").encode(),
             latency_ms=5,
         )
+
+    async def exchange_sequence(self, commands: list[str], terminator: str = "\r") -> list[TransportReply]:
+        return [await self.exchange(command, terminator) for command in commands]

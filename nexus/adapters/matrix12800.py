@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 
 from .base import ActionResult, ActionSpec
-from .extron_sis import ExtronSISAdapter
+from .extron_sis import ExtronSISAdapter, name_bank_action
 
 _TIE_ACK_RE = re.compile(r"Out\s*(\d+)\s*[• ]\s*In\s*(\d+)", re.IGNORECASE)
 _TIE_QUERY_RE = re.compile(r"(?:In\s*)?(\d{1,3})", re.IGNORECASE)
@@ -51,6 +51,7 @@ class Matrix12800Adapter(ExtronSISAdapter):
         ),
         "query_firmware": ActionSpec(summary="Query firmware version (`Q`)"),
         "query_part_number": ActionSpec(summary="Query part number (`N`)"),
+        "read_name_bank": name_bank_action(["input", "output", "preset"]),
     }
 
     def __init__(self, config, transport) -> None:
@@ -81,6 +82,14 @@ class Matrix12800Adapter(ExtronSISAdapter):
                 result.state = {f"output_{output}": int(match.group(1))}
                 result.state_source = "query"
         return result
+
+    async def do_read_name_bank(self, kind: str, start: int = 1, count: int = 32) -> ActionResult:
+        profile = self.hardware_profile()
+        return await self.read_name_bank(kind, start, count, {
+            "input": int(profile.get("inputs", 128)),
+            "output": int(profile.get("outputs", 128)),
+            "preset": int(profile.get("presets", 128)),
+        })
 
     class Simulator(ExtronSISAdapter.Simulator):
         banner = "(c) Copyright 2024, Extron Electronics, Matrix 12800, V2.10, 60-0000-12"

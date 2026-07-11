@@ -47,5 +47,8 @@
 - **Bridge agents** — USB/serial/MIDI devices attached to a Mac or Pi
   register and advertise capabilities (DirtyMixer stays the canonical
   exception: Nexus → DirtyMixerApp → USB).
-- Preset/input **name queries** (`{n}*Nmp` etc.) so no UI ever shows
-  "Input 3" when "VHS Deck 1" exists.
+- ~~Bounded hardware input/output/preset name reads~~ ✅ 2026-07-11:
+  Matrix/DMS support lazy 32-label banks and SMX supports I/O banks; exact
+  live response parsing remains `verified=false` until a supervised bench
+  read. Next: Patch Bay scroll-driven banks plus explicit local aliases that
+  never overwrite hardware labels.

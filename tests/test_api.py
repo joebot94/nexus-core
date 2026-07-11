@@ -84,6 +84,16 @@ async def test_hardware_profile_is_exposed_without_sending_commands(client):
 
 
 @pytest.mark.asyncio
+async def test_name_bank_endpoint_reads_a_small_simulated_range(client):
+    r = await client.get("/api/v1/devices/device.dms.main/names", params={
+        "kind": "preset", "start": 1, "count": 2})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] and body["names"] == {"1": "Preset 1", "2": "Preset 2"}
+    assert body["verified"] is False
+
+
+@pytest.mark.asyncio
 async def test_raw_endpoint_is_guarded(client):
     r = await client.post("/api/v1/devices/device.mgp.sim/raw",
                           json={"command": "Q"})

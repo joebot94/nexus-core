@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 
 from .base import ActionResult, ActionSpec
-from .extron_sis import ExtronSISAdapter
+from .extron_sis import ExtronSISAdapter, name_bank_action
 
 PLANES = {"00": "&", "01": "&", "02": "&", "04": "$"}
 PLANE_ORDER = ["00", "01", "02", "04"]
@@ -72,6 +72,9 @@ class SMXAdapter(ExtronSISAdapter):
         ),
         "query_firmware": ActionSpec(summary="Query firmware version (`Q`)"),
         "query_part_number": ActionSpec(summary="Query part number (`N`)"),
+        # Existing control code proves I/O names. It does not yet prove SMX
+        # preset-name readback, so don't advertise it until bench-confirmed.
+        "read_name_bank": name_bank_action(["input", "output"]),
     }
 
     def __init__(self, config, transport) -> None:
@@ -133,6 +136,13 @@ class SMXAdapter(ExtronSISAdapter):
                 result.state = {f"plane_{plane}_output_{output}": int(match.group(1))}
                 result.state_source = "query"
         return result
+
+    async def do_read_name_bank(self, kind: str, start: int = 1, count: int = 32) -> ActionResult:
+        profile = self.hardware_profile()
+        return await self.read_name_bank(kind, start, count, {
+            "input": int(profile.get("inputs", 16)),
+            "output": int(profile.get("outputs", 16)),
+        })
 
     class Simulator(ExtronSISAdapter.Simulator):
         banner = "(c) Copyright 2024, Extron Electronics, SMX System MultiMatrix, V1.24, 60-0000-11"

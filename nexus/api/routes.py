@@ -108,6 +108,32 @@ def get_hardware_profile(request: Request, device_id: str):
     }
 
 
+@router.get("/devices/{device_id}/names", dependencies=[Depends(require_token)])
+async def read_device_name_bank(request: Request, device_id: str, kind: str = "input",
+                                start: int = 1, count: int = 32):
+    """Read a small, explicit hardware-name bank through a dedicated adapter.
+
+    Never use this endpoint as an accidental 128×128 sweep: adapters cap each
+    request at 32 entries and reject a bank outside the installed profile.
+    """
+    entry = _get_entry(request, device_id)
+    try:
+        result = await entry.adapter.execute("read_name_bank", {
+            "kind": kind, "start": start, "count": count})
+    except UnsupportedAction as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except InvalidParams as exc:
+        raise HTTPException(422, str(exc)) from exc
+    entry.mark(result.ok or bool(result.response))
+    if not result.ok:
+        return {"ok": False, "kind": kind, "start": start, "count": count,
+                "names": {}, "error": result.error, "latency_ms": result.latency_ms}
+    names = result.state.get("names", {}).get(kind, {})
+    return {"ok": True, "kind": kind, "start": start, "count": count,
+            "names": names, "latency_ms": result.latency_ms,
+            "verified": entry.adapter.actions["read_name_bank"].verified}
+
+
 @router.get("/devices/{device_id}/telemetry", dependencies=[Depends(require_token)])
 async def get_lab_telemetry(request: Request, device_id: str):
     """Read Joebot Lab's existing poll result for one Nexus device.

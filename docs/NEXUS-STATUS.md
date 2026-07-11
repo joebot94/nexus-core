@@ -1,6 +1,24 @@
 # Nexus Core — Status (honest ledger)
 
-_Updated: 2026-07-10 (v0.3.0, MTPX adapter)_
+_Updated: 2026-07-11 (v0.3.0 + bounded hardware-name reads)_
+
+## 2026-07-11 — hardware-stored names, without the giant sweep
+
+- **Read-only bounded name banks:** `GET /api/v1/devices/{id}/names` accepts
+  `kind=input|output|preset`, `start`, and `count` (1–32). Matrix 12800 and
+  DMS 3600 expose input/output/preset labels; SMX deliberately exposes
+  input/output labels only until preset-label readback is bench-confirmed.
+- **Profile-bound:** a 24×24 configured DMS cannot be asked for input 32;
+  requests outside the installed hardware profile are rejected instead of
+  inventing a maximum chassis.
+- **One connection per bank:** TCP `exchange_sequence` authenticates once,
+  then pairs each query reply to its channel. This avoids a 32-connection
+  burst and prevents GlitchBoard from ever performing an accidental full
+  12800 name sweep.
+- **Truth labeling:** the action is `verified=false` until its exact live
+  response format has been supervised on hardware. Simulated endpoint and
+  boundary coverage pass; no NAS deployment or rack command was made for this
+  slice.
 
 ## v0.3.0 — MTPX Plus adapter (the glitch technique)
 
@@ -107,6 +125,11 @@ Device-control code was instead re-homed conceptually from **joebot-lab**
   Nexus telemetry only as optional read-only evidence. Its current matrix-route
   preflight distinguishes present / absent / not checked / no sensor and keeps
   the operator's explicit warn-or-skip policy separate from telemetry itself.
+- **Hardware names (local desktop + Nexus work, not NAS-deployed):** Show
+  Check can explicitly sync the first input name bank and show those labels
+  beside its route sources. Output/preset pickers and scroll-driven banks are
+  the next UI slice. Matrix/DMS name commands are based on the existing Lab
+  control code; their live response parsing still needs supervised validation.
 - No unsolicited-response listening (needs persistent connections, M4).
 - Groups endpoint returns `[]` (shape reserved, lands M2).
 - Coordination plane (app registration, intents, scenes, recording) not
