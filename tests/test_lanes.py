@@ -158,3 +158,21 @@ def test_registry_builds_lane_pool():
     config = DeviceConfig(device_id="device.mtpx.1", type="mtpx",
                           connection="lanes", lane_count=10)
     assert config.connection == "lanes" and config.lane_count == 10
+
+
+@pytest.mark.asyncio
+async def test_devices_endpoint_surfaces_connection_type(tmp_path, monkeypatch):
+    """/devices reports each device's connection type + transport stats so a
+    rack session can watch pooling/lanes behave."""
+    import pytest_asyncio  # noqa: F401
+    from httpx import ASGITransport, AsyncClient
+    from nexus.app import create_app
+    from nexus.config import Settings
+    monkeypatch.setenv("NEXUS_DATA_DIR", str(tmp_path))
+    app = create_app(Settings())   # NOT simulate-all: real transports built
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/v1/devices")
+        by_id = {d["device_id"]: d for d in r.json()}
+        assert by_id["device.mtpx.1"]["connection"] == "lanes"
+        assert by_id["device.mtpx.1"]["transport_stats"]["lane_count"] == 10
+        assert by_id["device.mgp.1"]["connection"] == "pooled"

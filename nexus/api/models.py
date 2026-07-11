@@ -48,3 +48,7 @@ class DeviceOut(BaseModel):
     simulated: bool
     status: str
     last_seen: str | None
+    # How this device is connected (oneshot / pooled / lanes) and live transport
+    # counters — for watching pooling/lanes behave during a rack session.
+    connection: str = "oneshot"
+    transport_stats: dict[str, Any] = Field(default_factory=dict)

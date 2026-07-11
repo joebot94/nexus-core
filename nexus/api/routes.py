@@ -10,7 +10,7 @@ from .. import VERSION
 from ..adapters.base import InvalidParams, UnsupportedAction
 from ..lab import DEFAULT_LAB_IDS, LabTelemetryError
 from ..registry import DeviceEntry
-from ..transports import PooledTransport
+from ..transports import LanePoolTransport, PooledTransport
 from .models import (ActionRequest, ActionResponse, DeviceOut,
                      GroupActionRequest, RawRequest)
 
@@ -36,11 +36,17 @@ def require_token(request: Request) -> None:
 
 def _device_out(entry: DeviceEntry) -> DeviceOut:
     cfg = entry.config
+    transport = entry.adapter.transport
+    stats = dict(getattr(transport, "stats", {}) or {})
+    if isinstance(transport, LanePoolTransport):
+        stats["lane_count"] = transport.lane_count
+        stats["lanes_live"] = sum(1 for l in transport._lanes if l.alive)
     return DeviceOut(
         device_id=cfg.device_id, type=cfg.type, label=cfg.label,
         host=cfg.host, port=cfg.port, location=cfg.location, notes=cfg.notes,
         enabled=cfg.enabled, simulated=entry.simulated,
         status=entry.status, last_seen=entry.last_seen,
+        connection=cfg.connection, transport_stats=stats,
     )
 
 
