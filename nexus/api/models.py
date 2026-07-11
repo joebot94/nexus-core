@@ -36,6 +36,21 @@ class GroupActionRequest(BaseModel):
     parameters: dict[str, Any] = Field(default_factory=dict)
 
 
+class VideowallPlanRequest(BaseModel):
+    """A video-wall configuration to resolve into per-tile signal paths. The
+    client (GlitchBoard) owns the config; Nexus resolves it statelessly."""
+    tiles: int
+    orientation: str = "horizontal"           # horizontal (rows) | vertical (cols)
+    signal: str = "digital"                    # digital | rgb | composite
+    builder_devices: list[str] = Field(default_factory=list)
+    combiner_device: str = ""
+    source_device: str = ""
+    mtpx_devices: list[str] = Field(default_factory=list)
+    dms_device: str = "device.dms.main"
+    matrix_device: str = "device.matrix.main"
+    smx_device: str = "device.smx.main"
+
+
 class DeviceOut(BaseModel):
     device_id: str
     type: str

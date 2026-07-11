@@ -12,7 +12,7 @@ from ..lab import DEFAULT_LAB_IDS, LabTelemetryError
 from ..registry import DeviceEntry
 from ..transports import LanePoolTransport, PooledTransport
 from .models import (ActionRequest, ActionResponse, DeviceOut,
-                     GroupActionRequest, RawRequest)
+                     GroupActionRequest, RawRequest, VideowallPlanRequest)
 
 router = APIRouter(prefix="/api/v1")
 _started = time.monotonic()
@@ -405,6 +405,43 @@ def generate_wall_baseline(request: Request):
                     f"generated {scene.id} — {len(scene.steps)} steps from wall plan")
     return {"ok": True, "scene": scene.model_dump(),
             "hint": "dry-run with POST /scenes/scene.wall-baseline/recall?dry_run=true"}
+
+
+@router.post("/wall/videowall/plan", dependencies=[Depends(require_token)])
+def videowall_plan(request: Request, body: VideowallPlanRequest):
+    """Resolve a video-wall config into every tile's full signal path through the
+    DMS fabric (source → builder MGP → combiner MGP → out, per signal style) plus
+    each tile's builder/window. Read-only planning truth for GlitchBoard's wall
+    view — the map that lets skew/scramble target the right square. Fires nothing.
+    See GlitchBoard/docs/VIDEOWALL-MGP-DESIGN.md."""
+    from ..videowall import (Orientation, Signal, VideowallError, WallConfig,
+                             builder_window, cells, tile_path)
+    try:
+        wall = WallConfig(
+            tiles=body.tiles, orientation=Orientation(body.orientation),
+            signal=Signal(body.signal), builder_devices=body.builder_devices,
+            combiner_device=body.combiner_device, source_device=body.source_device,
+            mtpx_devices=body.mtpx_devices, dms_device=body.dms_device,
+            matrix_device=body.matrix_device, smx_device=body.smx_device)
+        spec = wall.layout
+    except VideowallError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(422, f"invalid orientation/signal: {exc}") from exc
+
+    resolved = []
+    for tile in cells(spec):
+        builder_i, window = builder_window(tile, wall)
+        resolved.append({
+            "row": tile.row, "col": tile.col,
+            "builder_index": builder_i, "window": window,
+            "path": [{"stage": h.stage, "device": h.device, "detail": h.detail}
+                     for h in tile_path(tile, wall)],
+        })
+    return {"tiles": body.tiles, "grid": f"{spec.rows}×{spec.cols}",
+            "signal": body.signal, "single_mgp": wall.is_single_mgp,
+            "builder_preset": spec.builder_preset,
+            "combiner_preset": spec.combiner_preset, "resolved": resolved}
 
 
 @router.get("/scenes", dependencies=[Depends(require_token)])

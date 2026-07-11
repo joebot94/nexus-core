@@ -132,3 +132,41 @@ def test_rate_ceilings_clamp():
     assert max_rate_hz(Mechanism.INPUT_REMAP) == 15.0
     assert clamp_rate(15.0, Mechanism.WINDOW_MOVE) == 4.0   # window move caps low
     assert clamp_rate(2.0, Mechanism.INPUT_REMAP) == 2.0    # under ceiling: unchanged
+
+
+# ---- API -------------------------------------------------------------------
+
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+from nexus.app import create_app
+from nexus.config import Settings
+
+
+@pytest_asyncio.fixture
+async def client(tmp_path, monkeypatch):
+    monkeypatch.setenv("NEXUS_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NEXUS_SIMULATE", "1")
+    app = create_app(Settings())
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        yield c
+
+
+@pytest.mark.asyncio
+async def test_videowall_plan_endpoint_resolves_all_tiles(client):
+    r = await client.post("/api/v1/wall/videowall/plan", json={
+        "tiles": 9, "signal": "digital",
+        "builder_devices": ["device.mgp.1", "device.mgp.2", "device.mgp.3"],
+        "combiner_device": "device.mgp.5", "source_device": "wallctl"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["grid"] == "3×3" and len(body["resolved"]) == 9
+    assert body["single_mgp"] is False
+    first = body["resolved"][0]
+    assert first["builder_index"] == 0 and first["window"] == 1
+    assert any("DMS out 22 → wall" in h["detail"] for h in first["path"])
+
+
+@pytest.mark.asyncio
+async def test_videowall_plan_rejects_bad_grid(client):
+    r = await client.post("/api/v1/wall/videowall/plan", json={"tiles": 7})
+    assert r.status_code == 422
