@@ -52,3 +52,24 @@
   live response parsing remains `verified=false` until a supervised bench
   read. Next: Patch Bay scroll-driven banks plus explicit local aliases that
   never overwrite hardware labels.
+
+## From Joe's 2026-07-11 brain dump
+(full triage: `GlitchBoard/docs/BRAINDUMP_2026-07-11.md`)
+
+- **Name write-back** — edit input/preset names and save them to devices
+  that support it (12800/SMX/DMS/MGP). SIS name-write commands are doc-only
+  → `verified: false` until a bench pass. Pairs with the read banks +
+  local-alias plan above.
+- **Baseline scene ("normal" preset)** — one recallable cross-device state:
+  MTPX ties/presets + cascade skew clears, 12800/DMS/SMX routes, MGP
+  layout. The concrete first use-case for `/groups` + the coordination
+  plane's scenes. Chaos modes (SMX scramble, MGP blank/freeze, everything-
+  routes-everywhere) become deltas layered on the baseline.
+- **MTPX wall topology** — ~5× MTPX 128, ~3 signals each (one takes a 4th)
+  = 16 sources; loopback cascades stack skew past ±31; final out → matrix →
+  the right MGP. DNS plan `mtpx1-5.extron.video`; the registry should model
+  wall position so a graphical wall view can resolve placement → unit/lane/
+  cascade. GlitchBoard's MTPXTopology model is the client-side seed.
+- **MIDI bridge (long-term)** — an Akai APC-class controller registered via
+  a bridge agent (see Bridge agents above); MIDI-learn maps any control to
+  any Nexus action; LED feedback pulses on beat.
