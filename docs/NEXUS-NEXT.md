@@ -93,3 +93,10 @@
 - **MIDI bridge (long-term)** — an Akai APC-class controller registered via
   a bridge agent (see Bridge agents above); MIDI-learn maps any control to
   any Nexus action; LED feedback pulses on beat.
+
+## GUI phase (Opus/Codex, with Joe)
+The Nexus videowall glitch engine is feature-complete (v0.18.0). The next phase
+is the **GlitchBoard GUI** to drive it — full handoff:
+`GlitchBoard/docs/HANDOFF_2026-07-11_VIDEOWALL-GUI.md` (architecture, the Nexus
+API surface the GUI calls, the Wall Cue job, ground rules). Vision +
+signal chain: `GlitchBoard/docs/VIDEOWALL-MGP-DESIGN.md`.
