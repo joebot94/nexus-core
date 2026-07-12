@@ -81,6 +81,21 @@ class VideowallFreezeRequest(VideowallPlanRequest):
     on: bool = True
 
 
+class RegionChaosSpec(BaseModel):
+    """Per-region chaos: which builder MGP, and which glitches to layer on it."""
+    builder: int
+    scramble: bool = False
+    skew: int = 0          # 0 = none; else max per-tile RGB skew (RGB walls only)
+    freeze: bool = False
+
+
+class VideowallChaosRequest(VideowallPlanRequest):
+    """A wall config plus per-region chaos — compose scramble/skew/freeze on the
+    regions you name; unnamed regions stay clean. Deterministic from `seed`."""
+    regions: list[RegionChaosSpec] = Field(default_factory=list)
+    seed: int = 0
+
+
 class DeviceOut(BaseModel):
     device_id: str
     type: str

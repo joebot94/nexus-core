@@ -408,3 +408,36 @@ def freeze_steps(wall: WallConfig, tiles: list[Tile] | None = None, *,
                       "parameters": {"window": window, "on": 1 if on else 0},
                       "note": f"{mode} {'on' if on else 'off'} — window {window}"})
     return steps
+
+
+@dataclass
+class RegionChaos:
+    """How chaotic one builder region (MGP) should be. Absent regions stay
+    clean (baseline) — that's the "one quadrant crazy, rest untouched" control."""
+    builder: int
+    scramble: bool = False
+    skew: int = 0          # 0 = none; else max per-tile RGB skew (RGB walls only)
+    freeze: bool = False   # freeze the region's tiles
+
+
+def _region_tiles(wall: WallConfig, builder_index: int) -> list[Tile]:
+    return [t for t in cells(wall.layout)
+            if builder_window(t, wall)[0] == builder_index]
+
+
+def chaos_steps(wall: WallConfig, regions: list[RegionChaos], seed: int = 0) -> list[dict]:
+    """Compose the glitch toolkit per region — scramble (input-remap), skew
+    (MTPX RGB), and freeze (MGP FX) — into ONE delta scene, so you can crank one
+    quadrant to full chaos and leave the rest on the clean baseline.
+    Deterministic from `seed`. Skew is silently dropped on non-RGB walls."""
+    steps: list[dict] = []
+    for region in regions:
+        if region.scramble:
+            steps += scramble_steps(wall, builders=[region.builder], seed=seed)
+        if region.skew > 0 and wall.signal is Signal.RGB:
+            steps += skew_burst_steps(wall, tiles=_region_tiles(wall, region.builder),
+                                      random_seed=seed, max_skew=region.skew)
+        if region.freeze:
+            steps += freeze_steps(wall, tiles=_region_tiles(wall, region.builder),
+                                  mode="freeze")
+    return steps

@@ -309,3 +309,17 @@ Device-control code was instead re-homed conceptually from **joebot-lab**
   (MTPX RGB) + freeze/blank (MGP FX). Remaining: chase sequences (GlitchBoard
   already has the MGP Window FX Chase timeline; Nexus now has the actions it
   fires) + DMS per-output mute wire + the GlitchBoard Wall Cue UI.
+
+## v0.18.0 (2026-07-11, local — NAS still runs v0.4.0)
+
+- **Composed chaos generator** (`videowall.chaos_steps` + `RegionChaos` +
+  `POST /wall/videowall/chaos-scene`) — the capstone: compose scramble +
+  skew + freeze per builder region into ONE delta scene. Name a region with
+  any mix of glitches; unnamed regions stay on the clean baseline. That's Joe's
+  "one quadrant crazy, everything else fine" — configurable, deterministic from
+  seed, skew auto-dropped on non-RGB walls. Saved as `scene.videowall-chaos`.
+  The Nexus-side glitch engine is now feature-complete for the core toolkit:
+  baseline + scramble + skew + freeze + composed chaos, all dry-runnable scenes.
+  4 new tests; 133 total. Remaining for the videowall: DMS per-output mute wire
+  (bench), chase-as-sequence (GlitchBoard timeline already does this), and the
+  GlitchBoard Wall Cue UI (needs Joe's Mac).

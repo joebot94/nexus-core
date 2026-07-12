@@ -13,8 +13,8 @@ from ..registry import DeviceEntry
 from ..transports import LanePoolTransport, PooledTransport
 from .models import (ActionRequest, ActionResponse, DeviceOut,
                      GroupActionRequest, RawRequest, VideowallPlanRequest,
-                     VideowallFreezeRequest, VideowallScrambleRequest,
-                     VideowallSkewRequest)
+                     VideowallChaosRequest, VideowallFreezeRequest,
+                     VideowallScrambleRequest, VideowallSkewRequest)
 
 router = APIRouter(prefix="/api/v1")
 _started = time.monotonic()
@@ -601,6 +601,45 @@ def videowall_freeze_scene(request: Request, body: VideowallFreezeRequest):
                     f"generated {scene.id} — {len(scene.steps)} {body.mode} step(s)")
     return {"ok": True, "scene": scene.model_dump(),
             "hint": "dry-run: POST /scenes/scene.videowall-freeze/recall?dry_run=true"}
+
+
+@router.post("/wall/videowall/chaos-scene", dependencies=[Depends(require_token)])
+def videowall_chaos_scene(request: Request, body: VideowallChaosRequest):
+    """Compose the glitch toolkit per region into ONE chaos delta — scramble +
+    skew + freeze on the regions you name, everything else clean. This is the
+    "one quadrant crazy, rest untouched" control. Saved as `scene.videowall-
+    chaos`, dry-runnable. Deterministic from `seed`."""
+    from ..scenes import Scene, SceneStep
+    from ..videowall import (Orientation, RegionChaos, Signal, VideowallError,
+                             WallConfig, chaos_steps)
+    ctx = _ctx(request)
+    try:
+        wall = WallConfig(
+            tiles=body.tiles, orientation=Orientation(body.orientation),
+            signal=Signal(body.signal), builder_devices=body.builder_devices,
+            combiner_device=body.combiner_device, source_device=body.source_device,
+            mtpx_devices=body.mtpx_devices, dms_device=body.dms_device,
+            matrix_device=body.matrix_device, smx_device=body.smx_device)
+        wall.layout   # validate grid
+    except (VideowallError, ValueError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+    regions = [RegionChaos(builder=r.builder, scramble=r.scramble, skew=r.skew,
+                           freeze=r.freeze) for r in body.regions]
+    steps = chaos_steps(wall, regions, seed=body.seed)
+    if not steps:
+        raise HTTPException(422, "no chaos requested — name at least one region "
+                                 "with scramble/skew/freeze")
+    scene = Scene(id="scene.videowall-chaos",
+                  label=f"Videowall chaos ({len(regions)} region(s), seed {body.seed})",
+                  notes="Composed glitch delta — scramble + skew + freeze per "
+                        "region, unnamed regions clean. Layers on the baseline.",
+                  steps=[SceneStep(**s) for s in steps])
+    ctx.scenes.upsert_scene(scene)
+    ctx.events.emit("nexus", "nexus-core",
+                    f"generated {scene.id} — {len(scene.steps)} steps across "
+                    f"{len(regions)} region(s)")
+    return {"ok": True, "scene": scene.model_dump(),
+            "hint": "dry-run: POST /scenes/scene.videowall-chaos/recall?dry_run=true"}
 
 
 @router.get("/scenes", dependencies=[Depends(require_token)])

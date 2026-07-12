@@ -358,3 +358,43 @@ async def test_mgp_freeze_action_on_sim(client):
         "parameters": {"window": 2, "on": 1}})
     assert r.status_code == 200
     assert r.json()["ok"] and r.json()["state"] == {"window_2_freeze": True}
+
+
+# ---- composed chaos generator ----------------------------------------------
+
+def test_chaos_one_region_crazy_rest_clean():
+    from nexus.videowall import RegionChaos, chaos_steps
+    wall = _wall_3x3(Signal.RGB)
+    # Only builder 0 goes wild (scramble + skew + freeze); 1 and 2 untouched.
+    steps = chaos_steps(wall, [RegionChaos(builder=0, scramble=True, skew=31, freeze=True)], seed=2)
+    devices = {s["target"] for s in steps}
+    assert "device.mgp.1" in devices and "device.mtpx.1" in devices   # scramble+freeze, skew
+    assert "device.mgp.2" not in devices and "device.mgp.3" not in devices   # rest clean
+    actions = {s["action"] for s in steps}
+    assert actions == {"route_input_to_window", "set_input_skew_batch", "set_window_freeze"}
+
+
+def test_chaos_skew_dropped_on_digital():
+    from nexus.videowall import RegionChaos, chaos_steps
+    wall = _wall_3x3(Signal.DIGITAL)
+    steps = chaos_steps(wall, [RegionChaos(builder=0, scramble=True, skew=31)], seed=1)
+    assert not any(s["action"] == "set_input_skew_batch" for s in steps)   # no skew on digital
+    assert any(s["action"] == "route_input_to_window" for s in steps)      # scramble still applies
+
+
+@pytest.mark.asyncio
+async def test_chaos_scene_endpoint(client):
+    r = await client.post("/api/v1/wall/videowall/chaos-scene", json={
+        "tiles": 9, "signal": "rgb", "seed": 5,
+        "builder_devices": ["device.mgp.1", "device.mgp.2", "device.mgp.3"],
+        "combiner_device": "device.mgp.5",
+        "mtpx_devices": ["device.mtpx.1", "device.mtpx.2", "device.mtpx.3"],
+        "regions": [{"builder": 0, "scramble": True, "skew": 20, "freeze": True}]})
+    assert r.status_code == 200
+    assert r.json()["scene"]["id"] == "scene.videowall-chaos"
+
+
+@pytest.mark.asyncio
+async def test_chaos_scene_needs_a_region(client):
+    r = await client.post("/api/v1/wall/videowall/chaos-scene", json={"tiles": 9})
+    assert r.status_code == 422
