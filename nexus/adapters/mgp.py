@@ -39,6 +39,21 @@ class MGP464Adapter(ExtronSISAdapter):
             summary="Query which input feeds a window (`window!` → input number)",
             params={"window": {"type": "int", "range": (1, 4), "required": True}},
         ),
+        "set_window_blank": ActionSpec(
+            summary="Blank/unblank a window (`{w}*{0|1}B`) — GlitchWall-verified; "
+                    "the FX-chase stutter",
+            params={
+                "window": {"type": "int", "range": (1, 4), "required": True},
+                "on": {"type": "int", "range": (0, 1), "required": True},
+            },
+        ),
+        "set_window_freeze": ActionSpec(
+            summary="Freeze/unfreeze a window (`{w}*{0|1}F`) — GlitchWall-verified",
+            params={
+                "window": {"type": "int", "range": (1, 4), "required": True},
+                "on": {"type": "int", "range": (0, 1), "required": True},
+            },
+        ),
         "query_firmware": ActionSpec(summary="Query firmware version (`Q`)"),
         "query_part_number": ActionSpec(summary="Query part number (`N`)"),
     }
@@ -66,6 +81,21 @@ class MGP464Adapter(ExtronSISAdapter):
         result = await self.send(f"{input}*{window}!")
         if result.ok:
             result.state = {f"window_{window}": input}
+        return result
+
+    async def do_set_window_blank(self, window: int, on: int) -> ActionResult:
+        return await self._window_fx(window, on, "B", "blank")
+
+    async def do_set_window_freeze(self, window: int, on: int) -> ActionResult:
+        return await self._window_fx(window, on, "F", "freeze")
+
+    async def _window_fx(self, window: int, on: int, code: str, key: str) -> ActionResult:
+        """`{w}*{0|1}B|F`. The exact ack isn't bench-pinned, so success is a
+        non-error reply and the state is set from the command (verified wire,
+        best-effort confirm)."""
+        result = await self.send(f"{window}*{on}{code}")
+        if result.ok:
+            result.state = {f"window_{window}_{key}": bool(on)}
         return result
 
     async def do_query_window(self, window: int) -> ActionResult:
@@ -107,4 +137,9 @@ class MGP464Adapter(ExtronSISAdapter):
                 if win not in self.windows:
                     return "E12"
                 return f"{self.windows[win]:02d}"
+            if match := re.fullmatch(r"(\d)\*([01])([BF])", command):
+                win, state, code = int(match.group(1)), int(match.group(2)), match.group(3)
+                if win not in self.windows:
+                    return "E12"
+                return f"Vfx{win}*{state}{code}"     # non-error ack (exact form bench-TBD)
             return "E10"

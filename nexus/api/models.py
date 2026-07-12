@@ -73,6 +73,14 @@ class VideowallSkewRequest(VideowallPlanRequest):
     max_skew: int = 31
 
 
+class VideowallFreezeRequest(VideowallPlanRequest):
+    """A wall config plus a freeze/blank FX. `tile_indices` (empty = whole wall);
+    `mode` = freeze | blank; `on=false` releases."""
+    tile_indices: list[int] = Field(default_factory=list)
+    mode: str = "freeze"
+    on: bool = True
+
+
 class DeviceOut(BaseModel):
     device_id: str
     type: str

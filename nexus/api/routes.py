@@ -13,7 +13,8 @@ from ..registry import DeviceEntry
 from ..transports import LanePoolTransport, PooledTransport
 from .models import (ActionRequest, ActionResponse, DeviceOut,
                      GroupActionRequest, RawRequest, VideowallPlanRequest,
-                     VideowallScrambleRequest, VideowallSkewRequest)
+                     VideowallFreezeRequest, VideowallScrambleRequest,
+                     VideowallSkewRequest)
 
 router = APIRouter(prefix="/api/v1")
 _started = time.monotonic()
@@ -568,6 +569,38 @@ def videowall_skew_scene(request: Request, body: VideowallSkewRequest):
                     f"generated {scene.id} — {len(scene.steps)} MTPX skew step(s)")
     return {"ok": True, "scene": scene.model_dump(),
             "hint": "dry-run: POST /scenes/scene.videowall-skew/recall?dry_run=true"}
+
+
+@router.post("/wall/videowall/freeze-scene", dependencies=[Depends(require_token)])
+def videowall_freeze_scene(request: Request, body: VideowallFreezeRequest):
+    """Freeze or blank chosen tiles (the FX-chase stutter) as a chaos DELTA.
+    `mode`: freeze | blank. Saved as `scene.videowall-freeze`, dry-runnable."""
+    from ..scenes import Scene, SceneStep
+    from ..videowall import (Orientation, Signal, VideowallError, WallConfig,
+                             cells, freeze_steps)
+    ctx = _ctx(request)
+    try:
+        wall = WallConfig(
+            tiles=body.tiles, orientation=Orientation(body.orientation),
+            signal=Signal(body.signal), builder_devices=body.builder_devices,
+            combiner_device=body.combiner_device, source_device=body.source_device,
+            mtpx_devices=body.mtpx_devices, dms_device=body.dms_device,
+            matrix_device=body.matrix_device, smx_device=body.smx_device)
+        all_tiles = cells(wall.layout)
+        chosen = [all_tiles[i] for i in body.tile_indices if 0 <= i < len(all_tiles)] or None
+        steps = freeze_steps(wall, tiles=chosen, mode=body.mode, on=body.on)
+    except (VideowallError, ValueError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+    scene = Scene(id="scene.videowall-freeze",
+                  label=f"Videowall {body.mode} ({'on' if body.on else 'release'})",
+                  notes="MGP window freeze/blank chaos delta on the baseline.",
+                  steps=[SceneStep(**s) for s in steps])
+    ctx.scenes.upsert_scene(scene)
+    ctx.events.emit("nexus", "nexus-core",
+                    f"generated {scene.id} — {len(scene.steps)} {body.mode} step(s)")
+    return {"ok": True, "scene": scene.model_dump(),
+            "hint": "dry-run: POST /scenes/scene.videowall-freeze/recall?dry_run=true"}
 
 
 @router.get("/scenes", dependencies=[Depends(require_token)])

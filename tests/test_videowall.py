@@ -311,3 +311,50 @@ async def test_skew_scene_endpoint_rgb(client):
     scene = r.json()["scene"]
     assert scene["id"] == "scene.videowall-skew"
     assert all(s["action"] == "set_input_skew_batch" for s in scene["steps"])
+
+
+# ---- freeze / blank generator ----------------------------------------------
+
+def test_freeze_steps_target_builder_windows():
+    from nexus.videowall import Tile, freeze_steps
+    wall = _wall_3x3()
+    steps = freeze_steps(wall, tiles=[Tile(1, 2)], mode="freeze")   # mid row, col 3
+    assert len(steps) == 1
+    assert steps[0]["target"] == "device.mgp.2" and steps[0]["action"] == "set_window_freeze"
+    assert steps[0]["parameters"] == {"window": 3, "on": 1}
+
+
+def test_blank_mode_and_release():
+    from nexus.videowall import freeze_steps
+    wall = _wall_3x3()
+    blanked = freeze_steps(wall, mode="blank", on=False)
+    assert all(s["action"] == "set_window_blank" and s["parameters"]["on"] == 0 for s in blanked)
+
+
+def test_bad_mode_raises():
+    from nexus.videowall import VideowallError, freeze_steps
+    with pytest.raises(VideowallError):
+        freeze_steps(_wall_3x3(), mode="explode")
+
+
+@pytest.mark.asyncio
+async def test_freeze_scene_endpoint_fires_on_sim(client):
+    r = await client.post("/api/v1/wall/videowall/freeze-scene", json={
+        "tiles": 4, "mode": "freeze",
+        "builder_devices": ["device.mgp.1"], "combiner_device": "device.mgp.1"})
+    assert r.status_code == 200
+    scene = r.json()["scene"]
+    assert scene["id"] == "scene.videowall-freeze"
+    # And it actually fires on the MGP sim (the new blank/freeze action).
+    recall = await client.post("/api/v1/scenes/scene.videowall-freeze/recall")
+    assert recall.status_code == 200
+    assert any(x["ok"] for x in recall.json()["results"])
+
+
+@pytest.mark.asyncio
+async def test_mgp_freeze_action_on_sim(client):
+    r = await client.post("/api/v1/actions", json={
+        "target": "device.mgp.sim", "action": "set_window_freeze",
+        "parameters": {"window": 2, "on": 1}})
+    assert r.status_code == 200
+    assert r.json()["ok"] and r.json()["state"] == {"window_2_freeze": True}

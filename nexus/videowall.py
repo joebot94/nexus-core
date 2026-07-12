@@ -388,3 +388,23 @@ def skew_burst_steps(wall: WallConfig, tiles: list[Tile] | None = None, *,
              "parameters": {"channels": channels},
              "note": f"skew burst — {len(channels)} input(s), RGB line delay"}
             for device, channels in by_device.items()]
+
+
+def freeze_steps(wall: WallConfig, tiles: list[Tile] | None = None, *,
+                 mode: str = "freeze", on: bool = True) -> list[dict]:
+    """Freeze or blank chosen tiles at their builder MGP window — the FX-chase
+    stutter (GlitchWall-verified `{w}*{0|1}F` / `{w}*{0|1}B`). Applied to the
+    builder's window (before assembly), so it holds/kills exactly that tile.
+    `mode` = "freeze" | "blank"; `on=False` releases."""
+    if mode not in ("freeze", "blank"):
+        raise VideowallError(f"mode must be 'freeze' or 'blank', got {mode!r}")
+    action = "set_window_freeze" if mode == "freeze" else "set_window_blank"
+    targets = tiles if tiles is not None else cells(wall.layout)
+    steps: list[dict] = []
+    for tile in targets:
+        builder_index, window = builder_window(tile, wall)
+        device = _builder_device(wall, builder_index)
+        steps.append({"target": device, "action": action,
+                      "parameters": {"window": window, "on": 1 if on else 0},
+                      "note": f"{mode} {'on' if on else 'off'} — window {window}"})
+    return steps

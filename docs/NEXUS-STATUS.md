@@ -295,3 +295,17 @@ Device-control code was instead re-homed conceptually from **joebot-lab**
   per-tile skew from a seed up to `max_skew`; else uniform r/g/b. Saved as
   `scene.videowall-skew`. This is the generator that ties the videowall MGP
   layer to the MTPX cascade + lane-pool work. 5 new tests; 124 total.
+
+## v0.17.0 (2026-07-11, local — NAS still runs v0.4.0)
+
+- **MGP blank/freeze actions** — `set_window_blank` (`{w}*{0|1}B`) +
+  `set_window_freeze` (`{w}*{0|1}F`), the GlitchWall-verified FX-chase wires
+  (verified=true wire; ack best-effort until bench). Sim answers them.
+- **Glitch generator — freeze/blank** (`videowall.freeze_steps` +
+  `POST /wall/videowall/freeze-scene`). Freeze/blank chosen tiles at their
+  builder MGP window (before assembly, so it holds/kills exactly that tile).
+  `mode` freeze|blank, `on=false` releases. Saved as `scene.videowall-freeze`.
+  5 new tests; 129 total. Glitch toolkit now: scramble (input-remap) + skew
+  (MTPX RGB) + freeze/blank (MGP FX). Remaining: chase sequences (GlitchBoard
+  already has the MGP Window FX Chase timeline; Nexus now has the actions it
+  fires) + DMS per-output mute wire + the GlitchBoard Wall Cue UI.
