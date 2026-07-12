@@ -59,6 +59,20 @@ class VideowallScrambleRequest(VideowallPlanRequest):
     seed: int = 0
 
 
+class VideowallSkewRequest(VideowallPlanRequest):
+    """A wall config plus a skew burst. `tile_indices` are 0-based tiles to skew
+    (empty = the whole wall). `random` = deterministic per-tile skew up to
+    `max_skew` from `seed`; otherwise every tile gets the same r/g/b (0-31 =
+    0-62 ns line delay). RGB walls only — skew ghosts on other signal types."""
+    tile_indices: list[int] = Field(default_factory=list)
+    r: int = 0
+    g: int = 0
+    b: int = 0
+    random: bool = False
+    seed: int = 0
+    max_skew: int = 31
+
+
 class DeviceOut(BaseModel):
     device_id: str
     type: str

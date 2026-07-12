@@ -260,3 +260,54 @@ async def test_scramble_scene_endpoint(client):
     scene = r.json()["scene"]
     assert scene["id"] == "scene.videowall-scramble"
     assert all(s["action"] == "route_input_to_window" for s in scene["steps"])
+
+
+# ---- skew burst generator --------------------------------------------------
+
+def test_skew_burst_rgb_only():
+    from nexus.videowall import skew_burst_steps
+    assert skew_burst_steps(_wall_3x3(Signal.DIGITAL), r=0, g=0, b=31) == []
+    assert skew_burst_steps(_wall_3x3(Signal.COMPOSITE), r=0, g=0, b=31) == []
+    rgb = skew_burst_steps(_wall_3x3(Signal.RGB), r=0, g=0, b=31)
+    assert rgb                                        # RGB wall produces steps
+
+
+def test_skew_burst_groups_by_mtpx_and_targets_right_input():
+    from nexus.videowall import Tile, skew_burst_steps
+    wall = _wall_3x3(Signal.RGB)
+    # skew just the top row (tiles (0,0),(0,1),(0,2)) → all on mtpx.1, inputs 1-3
+    steps = skew_burst_steps(wall, tiles=[Tile(0, 0), Tile(0, 1), Tile(0, 2)], b=20)
+    assert len(steps) == 1 and steps[0]["target"] == "device.mtpx.1"
+    assert steps[0]["action"] == "set_input_skew_batch"
+    inputs = sorted(c["input"] for c in steps[0]["parameters"]["channels"])
+    assert inputs == [1, 2, 3]
+    assert all(c["b"] == 20 for c in steps[0]["parameters"]["channels"])
+
+
+def test_skew_burst_random_is_deterministic_and_bounded():
+    from nexus.videowall import skew_burst_steps
+    wall = _wall_3x3(Signal.RGB)
+    a = skew_burst_steps(wall, random_seed=7, max_skew=31)
+    b = skew_burst_steps(wall, random_seed=7, max_skew=31)
+    assert a == b                                     # deterministic
+    vals = [v for s in a for c in s["parameters"]["channels"] for v in (c["r"], c["g"], c["b"])]
+    assert all(0 <= v <= 31 for v in vals)
+
+
+@pytest.mark.asyncio
+async def test_skew_scene_endpoint_rejects_digital(client):
+    r = await client.post("/api/v1/wall/videowall/skew-scene", json={
+        "tiles": 9, "signal": "digital", "b": 31,
+        "mtpx_devices": ["device.mtpx.1", "device.mtpx.2", "device.mtpx.3"]})
+    assert r.status_code == 422                        # skew is RGB-only
+
+
+@pytest.mark.asyncio
+async def test_skew_scene_endpoint_rgb(client):
+    r = await client.post("/api/v1/wall/videowall/skew-scene", json={
+        "tiles": 9, "signal": "rgb", "random": True, "seed": 4,
+        "mtpx_devices": ["device.mtpx.1", "device.mtpx.2", "device.mtpx.3"]})
+    assert r.status_code == 200
+    scene = r.json()["scene"]
+    assert scene["id"] == "scene.videowall-skew"
+    assert all(s["action"] == "set_input_skew_batch" for s in scene["steps"])

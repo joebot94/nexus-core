@@ -283,3 +283,15 @@ Device-control code was instead re-homed conceptually from **joebot-lab**
   quadrant crazy, rest clean." Saved as `scene.videowall-scramble` (chaos delta
   on the baseline), dry-runnable. 4 new tests; 119 total. Next generators:
   skew-burst (RGB path), freeze/mute, chase sequences.
+
+## v0.16.0 (2026-07-11, local — NAS still runs v0.4.0)
+
+- **Procedural glitch generator — skew burst** (`videowall.skew_burst_steps` +
+  `POST /wall/videowall/skew-scene`). Applies MTPX RGB line-skew (0-31 = 0-62ns)
+  to chosen tiles, resolving each tile to its builder's MTPX + the input feeding
+  its window; channels grouped into one `set_input_skew_batch` per MTPX so a
+  burst fans across that unit's lane pool. **RGB-path only** — returns [] / 422
+  for digital/composite (skew ghosts there, per Joe). `random` = deterministic
+  per-tile skew from a seed up to `max_skew`; else uniform r/g/b. Saved as
+  `scene.videowall-skew`. This is the generator that ties the videowall MGP
+  layer to the MTPX cascade + lane-pool work. 5 new tests; 124 total.

@@ -347,3 +347,44 @@ def scramble_steps(wall: WallConfig, builders: list[int] | None = None,
                           "parameters": {"input": source_input, "window": window},
                           "note": f"scramble: input {source_input} → window {window}"})
     return steps
+
+
+def _rand_skew(seed: int, tile: Tile, salt: int, ceiling: int) -> int:
+    """Deterministic per-tile per-channel skew value in 0..ceiling."""
+    x = (seed * 2654435761 + tile.row * 40503 + tile.col * 97 + salt * 131) & 0xFFFFFFFF
+    x ^= x >> 13
+    x = (x * 1274126177) & 0xFFFFFFFF
+    x ^= x >> 16
+    return x % (ceiling + 1)
+
+
+def skew_burst_steps(wall: WallConfig, tiles: list[Tile] | None = None, *,
+                     r: int = 0, g: int = 0, b: int = 0,
+                     random_seed: int | None = None, max_skew: int = 31) -> list[dict]:
+    """Apply MTPX RGB line-skew (0-31 = 0-62ns) to chosen tiles — the signature
+    Joebot glitch. **RGB-path only** (skew ghosts on composite/digital), so this
+    returns [] for any other signal type. Each tile resolves to its builder's
+    MTPX and the input feeding its window (via `builder_window`); channels are
+    grouped into one `set_input_skew_batch` per MTPX so a burst fans across that
+    unit's lane pool. `random_seed` gives deterministic per-tile skew up to
+    `max_skew`; otherwise every chosen tile gets the same (r,g,b)."""
+    if wall.signal is not Signal.RGB:
+        return []
+    targets = tiles if tiles is not None else cells(wall.layout)
+    by_device: dict[str, list[dict]] = {}
+    for tile in targets:
+        builder_index, window = builder_window(tile, wall)
+        device = (wall.mtpx_devices[builder_index]
+                  if builder_index < len(wall.mtpx_devices) else f"mtpx[{builder_index}]")
+        if random_seed is not None:
+            rr = _rand_skew(random_seed, tile, 1, max_skew)
+            gg = _rand_skew(random_seed, tile, 2, max_skew)
+            bb = _rand_skew(random_seed, tile, 3, max_skew)
+        else:
+            rr, gg, bb = r, g, b
+        by_device.setdefault(device, []).append(
+            {"input": window, "r": rr, "g": gg, "b": bb})
+    return [{"target": device, "action": "set_input_skew_batch",
+             "parameters": {"channels": channels},
+             "note": f"skew burst — {len(channels)} input(s), RGB line delay"}
+            for device, channels in by_device.items()]

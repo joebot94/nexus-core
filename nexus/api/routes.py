@@ -13,7 +13,7 @@ from ..registry import DeviceEntry
 from ..transports import LanePoolTransport, PooledTransport
 from .models import (ActionRequest, ActionResponse, DeviceOut,
                      GroupActionRequest, RawRequest, VideowallPlanRequest,
-                     VideowallScrambleRequest)
+                     VideowallScrambleRequest, VideowallSkewRequest)
 
 router = APIRouter(prefix="/api/v1")
 _started = time.monotonic()
@@ -527,6 +527,47 @@ def videowall_scramble_scene(request: Request, body: VideowallScrambleRequest):
                     f"generated {scene.id} — {len(scene.steps)} route steps")
     return {"ok": True, "scene": scene.model_dump(),
             "hint": "dry-run: POST /scenes/scene.videowall-scramble/recall?dry_run=true"}
+
+
+@router.post("/wall/videowall/skew-scene", dependencies=[Depends(require_token)])
+def videowall_skew_scene(request: Request, body: VideowallSkewRequest):
+    """Generate an MTPX skew burst as a chaos DELTA — RGB line-skew (0-31 =
+    0-62ns) on the chosen tiles, targeting the right MTPX input via each tile's
+    resolved path. RGB walls only. Saved as `scene.videowall-skew`, dry-runnable.
+    `random: true` = deterministic per-tile skew from `seed`; else uniform r/g/b."""
+    from ..scenes import Scene, SceneStep
+    from ..videowall import (Orientation, Signal, VideowallError, WallConfig,
+                             cells, skew_burst_steps)
+    ctx = _ctx(request)
+    try:
+        wall = WallConfig(
+            tiles=body.tiles,
+            orientation=Orientation(body.orientation), signal=Signal(body.signal),
+            builder_devices=body.builder_devices, combiner_device=body.combiner_device,
+            source_device=body.source_device, mtpx_devices=body.mtpx_devices,
+            dms_device=body.dms_device, matrix_device=body.matrix_device,
+            smx_device=body.smx_device)
+        all_tiles = cells(wall.layout)
+    except (VideowallError, ValueError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+    # tile_indices resolve against the grid (empty = whole wall).
+    chosen = [all_tiles[i] for i in body.tile_indices if 0 <= i < len(all_tiles)] or None
+    steps = skew_burst_steps(
+        wall, tiles=chosen, r=body.r, g=body.g, b=body.b,
+        random_seed=body.seed if body.random else None, max_skew=body.max_skew)
+    if not steps:
+        raise HTTPException(422, "skew is RGB-path only — this wall's signal is "
+                                 f"'{body.signal}' (skew ghosts on digital/composite)")
+    scene = Scene(id="scene.videowall-skew",
+                  label=f"Videowall skew ({'random ' if body.random else ''}burst)",
+                  notes="MTPX RGB line-skew chaos delta on the baseline. RGB path "
+                        "only; targets each tile's MTPX input via its resolved path.",
+                  steps=[SceneStep(**s) for s in steps])
+    ctx.scenes.upsert_scene(scene)
+    ctx.events.emit("nexus", "nexus-core",
+                    f"generated {scene.id} — {len(scene.steps)} MTPX skew step(s)")
+    return {"ok": True, "scene": scene.model_dump(),
+            "hint": "dry-run: POST /scenes/scene.videowall-skew/recall?dry_run=true"}
 
 
 @router.get("/scenes", dependencies=[Depends(require_token)])
