@@ -417,6 +417,24 @@ def generate_wall_baseline(request: Request):
             "hint": "dry-run with POST /scenes/scene.wall-baseline/recall?dry_run=true"}
 
 
+@router.get("/wall/videowall/layouts", dependencies=[Depends(require_token)])
+def videowall_layouts(request: Request):
+    """Every wall mode and how many MGPs it needs — so the GUI's mode picker can
+    show what's runnable given the unit count (Joe has 5 MGPs). Read-only."""
+    from ..videowall import LAYOUTS, MGP_WINDOWS
+    out = []
+    for tiles, spec in sorted(LAYOUTS.items()):
+        single = tiles <= MGP_WINDOWS
+        out.append({
+            "tiles": tiles, "grid": f"{spec.rows}×{spec.cols}",
+            "rows": spec.rows, "cols": spec.cols, "single_mgp": single,
+            "mgps_needed": 1 if single else spec.builders_used + 1,
+            "builder_preset": spec.builder_preset,
+            "combiner_preset": spec.combiner_preset,
+        })
+    return {"layouts": out}
+
+
 @router.post("/wall/videowall/plan", dependencies=[Depends(require_token)])
 def videowall_plan(request: Request, body: VideowallPlanRequest):
     """Resolve a video-wall config into every tile's full signal path through the

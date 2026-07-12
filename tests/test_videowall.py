@@ -398,3 +398,13 @@ async def test_chaos_scene_endpoint(client):
 async def test_chaos_scene_needs_a_region(client):
     r = await client.post("/api/v1/wall/videowall/chaos-scene", json={"tiles": 9})
     assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_layouts_endpoint_reports_mgps_needed(client):
+    r = await client.get("/api/v1/wall/videowall/layouts")
+    assert r.status_code == 200
+    by_tiles = {l["tiles"]: l for l in r.json()["layouts"]}
+    assert by_tiles[4]["single_mgp"] is True and by_tiles[4]["mgps_needed"] == 1
+    assert by_tiles[9]["mgps_needed"] == 4     # 3 builders + 1 combiner
+    assert by_tiles[16]["mgps_needed"] == 5    # 4×4 uses all 5 of Joe's MGPs
