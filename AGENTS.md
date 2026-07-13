@@ -26,6 +26,8 @@ The working tree currently has **uncommitted TextWall relay work**
 - If it is not your lane: leave those files untouched.
 
 **Do NOT start** new wall-planner/videowall features, SMX adapters, or any
-deploy work — GlitchBoard's Wall Composer Phases 1–3 are awaiting Joe's
-review, and the next Nexus-side architecture (latches resolver, SMX signal
-paths) gets a Fable design pass first.
+deploy work. (Update 2026-07-13 evening: Joe approved the Wall Composer
+Phases 1–3 UI; Codex's next lane is the Phase 5 animated preview, which is
+GlitchBoard-side only — nothing new is unblocked in THIS repo beyond the
+TextWall commit above. Latches resolver + SMX signal paths still get a
+Fable design pass first.)
