@@ -27,6 +27,15 @@ class Settings:
     # freshly opened app to perform the same DMS route/name reads.
     cache_poll_seconds: int = field(default_factory=lambda: int(os.environ.get("NEXUS_CACHE_POLL_SECONDS", "10")))
     name_cache_seconds: int = field(default_factory=lambda: int(os.environ.get("NEXUS_NAME_CACHE_SECONDS", "300")))
+    # Optional allowlisted TextWall renderer endpoint. This is intentionally
+    # empty by default: Nexus may coordinate a configured renderer, but it must
+    # never become a generic server-side URL fetcher.
+    textwall_url: str = field(default_factory=lambda: os.environ.get(
+        "NEXUS_TEXTWALL_URL", "").rstrip("/"))
+    # Shared only with the configured TextWall endpoint when that renderer is
+    # intentionally exposed to the LAN. Empty keeps the usual localhost-only
+    # development path unchanged.
+    textwall_token: str = field(default_factory=lambda: os.environ.get("NEXUS_TEXTWALL_TOKEN", ""))
 
     @property
     def registry_path(self) -> Path:

@@ -36,6 +36,16 @@ class GroupActionRequest(BaseModel):
     parameters: dict[str, Any] = Field(default_factory=dict)
 
 
+class TextWallCommandRequest(BaseModel):
+    """One opaque-but-validated visual cue for the configured TextWall app.
+
+    Nexus owns the fixed destination from NEXUS_TEXTWALL_URL; callers provide
+    only the command intent and payload, never an arbitrary URL.
+    """
+    action: str = Field(min_length=1, max_length=64)
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
 class VideowallPlanRequest(BaseModel):
     """A video-wall configuration to resolve into per-tile signal paths. The
     client (GlitchBoard) owns the config; Nexus resolves it statelessly."""

@@ -35,6 +35,10 @@ one Python process, config bootstraps itself on first run.
   `"simulate": true` in the registry does it selectively. Simulation follows
   the exact same adapter and API path as real hardware.
 - `NEXUS_TOKEN=...` enables LAN auth (send `X-Nexus-Token` or `Bearer`).
+- `NEXUS_TEXTWALL_URL=http://<TextWall-Mac-IP>:8787` plus
+  `NEXUS_TEXTWALL_TOKEN=<shared-secret>` enables the optional TextWall
+  coordination relay. Use the Mac's LAN IP when Nexus runs on the NAS—
+  `localhost` would refer to the NAS, not the renderer.
 
 ## Docker (NAS)
 

@@ -11,10 +11,12 @@ from ..adapters.base import InvalidParams, UnsupportedAction
 from ..lab import DEFAULT_LAB_IDS, LabTelemetryError
 from ..registry import DeviceEntry
 from ..transports import LanePoolTransport, PooledTransport
+from ..textwall import forward as forward_textwall
 from .models import (ActionRequest, ActionResponse, DeviceOut,
                      GroupActionRequest, RawRequest, VideowallPlanRequest,
                      VideowallChaosRequest, VideowallFreezeRequest,
-                     VideowallScrambleRequest, VideowallSkewRequest)
+                     VideowallScrambleRequest, VideowallSkewRequest,
+                     TextWallCommandRequest)
 
 router = APIRouter(prefix="/api/v1")
 _started = time.monotonic()
@@ -73,6 +75,41 @@ def health(request: Request):
             "online": sum(1 for d in devices if d.status == "online"),
         },
     }
+
+
+@router.get("/apps/textwall", dependencies=[Depends(require_token)])
+def textwall_status(request: Request):
+    """Whether the optional TextWall coordination relay is configured.
+
+    The endpoint is intentionally not probed here; status reads must never
+    flash/change a performance display.
+    """
+    return {"configured": bool(_ctx(request).settings.textwall_url),
+            "mode": "nexus-relay" if _ctx(request).settings.textwall_url else "direct-only"}
+
+
+@router.post("/apps/textwall/commands", dependencies=[Depends(require_token)])
+async def relay_textwall_command(request: Request, body: TextWallCommandRequest):
+    """Forward one cue to the configured TextWall endpoint and record it.
+
+    Direct GlitchBoard → TextWall remains the normal/no-dependency path. This
+    route is only for a show that explicitly places Nexus in the coordination
+    plane, e.g. a renderer hosted elsewhere on the trusted LAN.
+    """
+    ctx = _ctx(request)
+    if not ctx.settings.textwall_url:
+        raise HTTPException(409, "TextWall relay not configured (set NEXUS_TEXTWALL_URL)")
+    result = await forward_textwall(ctx.settings.textwall_url, ctx.settings.textwall_token,
+                                    body.action, body.payload)
+    summary = (f"TextWall {body.action} ✓" if result.ok
+               else f"TextWall {body.action} FAILED — {result.error or result.body.get('message', 'relay failed')}")
+    ctx.events.emit("app_action", "textwall", summary,
+                    {"action": body.action, "payload": body.payload,
+                     "ok": result.ok, "status_code": result.status_code})
+    if not result.ok:
+        raise HTTPException(result.status_code if result.status_code >= 400 else 502,
+                            result.error or result.body.get("message") or "TextWall relay failed")
+    return {"ok": True, "action": body.action, "response": result.body}
 
 
 @router.get("/devices", response_model=list[DeviceOut], dependencies=[Depends(require_token)])

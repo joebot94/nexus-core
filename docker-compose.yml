@@ -13,6 +13,13 @@ services:
       # polling the same rack hardware twice. Nexus remains standalone when
       # this variable is absent on another installation.
       NEXUS_LAB_URL: http://127.0.0.1:8080
+      NEXUS_TEXTWALL_URL: "${NEXUS_TEXTWALL_URL:-}"
+      NEXUS_TEXTWALL_TOKEN: "${NEXUS_TEXTWALL_TOKEN:-}"
+      # Optional TextWall coordination relay. Use the Mac's LAN IP (not
+      # localhost) and the same secret used to launch TextWall with
+      # TEXTWALL_BIND_HOST=0.0.0.0 / TEXTWALL_TOKEN.
+      # NEXUS_TEXTWALL_URL: http://10.0.0.42:8787
+      # NEXUS_TEXTWALL_TOKEN: replace-with-shared-secret
       # NEXUS_TOKEN: set-me-for-lan-auth
     volumes:
       - ./data:/data              # device_registry.jbt + rolling event log persist here

@@ -10,6 +10,8 @@ healthchecks; the WebSocket takes `?token=…`).
 | Method | Path | What |
 |---|---|---|
 | GET | `/api/v1/health` | service liveness + device counts |
+| GET | `/api/v1/apps/textwall` | whether the optional TextWall relay is configured |
+| POST | `/api/v1/apps/textwall/commands` | relay one TextWall cue to its configured renderer |
 | GET | `/api/v1/devices` | registry with live status |
 | GET | `/api/v1/devices/{id}` | one device |
 | GET | `/api/v1/devices/{id}/state` | last-known state, each value stamped `{source, updated_at}` |
@@ -41,6 +43,43 @@ with `ok: true` means "sent and not rejected, but unconfirmed."
 Errors: `404` unknown target, `400` unsupported action, `422` bad
 parameters, `ok: false` + `error` for device/transport failures
 (E-codes are normalized: `"E11: invalid preset number"`).
+
+## Optional TextWall relay
+
+TextWall normally receives cues directly from GlitchBoard at its local API.
+For a show that deliberately uses Nexus as the coordination plane, configure
+the renderer endpoint when starting Nexus:
+
+```bash
+NEXUS_TEXTWALL_URL=http://10.0.0.42:8787 NEXUS_TEXTWALL_TOKEN=<shared-secret> .venv/bin/python -m nexus
+```
+
+Nexus forwards only to this operator-configured endpoint—clients cannot supply
+arbitrary URLs. The same GlitchBoard cue payload can then be relayed through:
+
+```json
+POST /api/v1/apps/textwall/commands
+{
+  "action": "apply_cue",
+  "payload": {
+    "text": "WELCOME TO THE MACHINE",
+    "grid_size": "16x16",
+    "layout": "x_pattern",
+    "mode": "scatter",
+    "scatter_hz": 10
+  }
+}
+```
+
+If `NEXUS_TEXTWALL_URL` is absent, the route returns `409`; direct TextWall
+operation remains unaffected.
+
+For the NAS relay, launch TextWall with an intentional LAN bind and the same
+token; otherwise it remains safely local-only:
+
+```bash
+TEXTWALL_BIND_HOST=0.0.0.0 TEXTWALL_TOKEN=<shared-secret> open TextWall.app
+```
 
 ## Client examples
 
