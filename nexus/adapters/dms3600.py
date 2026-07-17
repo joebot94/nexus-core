@@ -42,6 +42,13 @@ class DMS3600Adapter(ExtronSISAdapter):
             summary="Untie an output (`0*out!`)",
             params={"output": {"type": "int", "range": (1, 36), "required": True}},
         ),
+        "tie_many": ActionSpec(
+            summary="Quick multiple tie — all pairs switch as ONE atomic command "
+                    "(`in1*out1*in2*out2...!`, ack `Qik`): one switch event and one "
+                    "DVI re-handshake instead of a sequential tie per output",
+            params={"ties": {"type": "list", "required": True}},
+            verified=False,  # doc-only (Extron_SIS_Reference.md); bench-confirm ack + atomicity
+        ),
         "query_tie": ActionSpec(
             summary="Query which input feeds an output (`out!`)",
             params={"output": {"type": "int", "range": (1, 36), "required": True}},
@@ -71,6 +78,16 @@ class DMS3600Adapter(ExtronSISAdapter):
             result.state = {f"output_{output}": 0}
         return result
 
+    async def do_tie_many(self, ties: list) -> ActionResult:
+        profile = self.hardware_profile()
+        pairs = self.parse_tie_pairs(ties, max_input=int(profile.get("inputs", 36)),
+                                     max_output=int(profile.get("outputs", 36)))
+        wire = "*".join(f"{inp}*{out}" for inp, out in pairs) + "!"
+        result = await self.send(wire)
+        if result.ok:
+            result.state = {f"output_{out}": inp for inp, out in pairs}
+        return result
+
     async def do_query_tie(self, output: int) -> ActionResult:
         result = await self.send(f"{output}!")
         if result.ok:
@@ -96,6 +113,14 @@ class DMS3600Adapter(ExtronSISAdapter):
             self.ties: dict[int, int] = {}
 
         def respond(self, command: str) -> str:
+            if re.fullmatch(r"\d{1,2}\*\d{1,2}(?:\*\d{1,2}\*\d{1,2})+!", command):
+                nums = [int(n) for n in command[:-1].split("*")]
+                pairs = list(zip(nums[::2], nums[1::2]))
+                if any(not (0 <= inp <= 36 and 1 <= out <= 36) for inp, out in pairs):
+                    return "E01"
+                for inp, out in pairs:
+                    self.ties[out] = inp
+                return "Qik"
             if match := re.fullmatch(r"(\d{1,2})\*(\d{1,2})!", command):
                 inp, out = int(match.group(1)), int(match.group(2))
                 if not (0 <= inp <= 36 and 1 <= out <= 36):

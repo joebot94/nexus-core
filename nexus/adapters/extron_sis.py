@@ -126,6 +126,37 @@ class ExtronSISAdapter(DeviceAdapter):
                             state={"names": {kind: names}}, state_source="query")
 
     @staticmethod
+    def parse_tie_pairs(ties: list, max_input: int, max_output: int) -> list[tuple[int, int]]:
+        """Validate a quick-multiple-tie list (`[{"input": i, "output": o}, ...]`)
+        into (input, output) pairs. Input 0 unties. One output may only appear
+        once — the whole point is ONE atomic switch, so a duplicate output is an
+        authoring error, not a sequence. Capped at 32 pairs per command until the
+        real per-device command-line length limit is bench-measured."""
+        from .base import InvalidParams
+        if len(ties) < 2:
+            raise InvalidParams("tie_many needs at least 2 ties — use 'tie' for one")
+        if len(ties) > 32:
+            raise InvalidParams("tie_many is capped at 32 pairs per command")
+        pairs: list[tuple[int, int]] = []
+        seen_outputs: set[int] = set()
+        for item in ties:
+            if not isinstance(item, dict) or "input" not in item or "output" not in item:
+                raise InvalidParams('each tie must be {"input": N, "output": N}')
+            try:
+                inp, out = int(item["input"]), int(item["output"])
+            except (TypeError, ValueError):
+                raise InvalidParams("tie input/output must be integers") from None
+            if not 0 <= inp <= max_input:
+                raise InvalidParams(f"tie input {inp} out of range 0-{max_input}")
+            if not 1 <= out <= max_output:
+                raise InvalidParams(f"tie output {out} out of range 1-{max_output}")
+            if out in seen_outputs:
+                raise InvalidParams(f"output {out} appears twice in one tie_many")
+            seen_outputs.add(out)
+            pairs.append((inp, out))
+        return pairs
+
+    @staticmethod
     def _parse_name(raw: str) -> str | None:
         cleaned = raw.strip().rstrip("]\r\n")
         if not cleaned or cleaned.startswith(("E", "Password:", "Login ", "(c) Copyright")):

@@ -105,3 +105,41 @@ async def test_profiles_constrain_each_installed_matrix():
     from nexus.adapters.base import InvalidParams
     with pytest.raises(InvalidParams, match="range 1-24"):
         await adapter.execute("tie", {"input": 25, "output": 1})
+
+
+@pytest.mark.asyncio
+async def test_quick_multiple_tie_switches_atomically():
+    """tie_many emits ONE chained wire (`in*out*in*out...!`), the sim acks Qik,
+    and every output lands in state — the atomic-switch path for wall routing."""
+    for cls in (DMS3600Adapter, Matrix12800Adapter):
+        adapter = _sim(cls)
+        result = await adapter.execute("tie_many", {"ties": [
+            {"input": 1, "output": 3}, {"input": 2, "output": 4},
+            {"input": 0, "output": 5},  # input 0 unties inside the same command
+        ]})
+        assert result.ok and result.response == "Qik"
+        assert result.state == {"output_3": 1, "output_4": 2, "output_5": 0}
+        # The simulator's tie table saw all three, same as three singles would.
+        query = await adapter.execute("query_tie", {"output": 4})
+        assert query.ok and query.state == {"output_4": 2}
+
+
+@pytest.mark.asyncio
+async def test_quick_multiple_tie_rejects_bad_lists():
+    from nexus.adapters.base import InvalidParams
+    adapter = _sim(DMS3600Adapter)
+    with pytest.raises(InvalidParams, match="at least 2"):
+        await adapter.execute("tie_many", {"ties": [{"input": 1, "output": 1}]})
+    with pytest.raises(InvalidParams, match="appears twice"):
+        await adapter.execute("tie_many", {"ties": [
+            {"input": 1, "output": 3}, {"input": 2, "output": 3}]})
+    with pytest.raises(InvalidParams, match="out of range"):
+        await adapter.execute("tie_many", {"ties": [
+            {"input": 1, "output": 3}, {"input": 99, "output": 4}]})
+    # Profile-constrained like single ties: a 24×24 DMS rejects output 30.
+    config = DeviceConfig(device_id="device.dms.small2", type="dms3600",
+                          hardware_profile={"inputs": 24, "outputs": 24})
+    small = DMS3600Adapter(config, SimTransport(DMS3600Adapter.Simulator()))
+    with pytest.raises(InvalidParams, match="out of range"):
+        await small.execute("tie_many", {"ties": [
+            {"input": 1, "output": 3}, {"input": 2, "output": 30}]})

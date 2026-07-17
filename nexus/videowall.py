@@ -251,12 +251,15 @@ def clamp_rate(requested_hz: float, mechanism: Mechanism) -> float:
 
 # ---- baseline scene generation ---------------------------------------------
 
-def baseline_steps(wall: WallConfig) -> list[dict]:
+def baseline_steps(wall: WallConfig, chain_ties: bool = False) -> list[dict]:
     """Ordered scene steps that recall the wall's 'normal' baseline — the
     known-good reference all chaos deviates from and returns to:
       1. source grid mode (IR via the IPCP),
       2. builder MGP preset(s) + the combiner preset,
       3. identity DMS routing (source→builders, builders→combiner, combiner→out).
+
+    `chain_ties=True` collapses the DMS routing block into quick-multiple-tie
+    `tie_many` steps (atomic switch, one re-handshake event) — bench-gated wire.
 
     Returned as plain step dicts (target/action/parameters/note) so this stays
     free of the scenes module. The source-mode step is IR-via-IPCP and stays
@@ -301,7 +304,45 @@ def baseline_steps(wall: WallConfig) -> list[dict]:
         steps.append({"target": wall.dms_device, "action": "tie",
                       "parameters": {"input": p.combiner_out, "output": p.combiner_out},
                       "note": "combiner → wall"})
+    if chain_ties:
+        steps = chain_tie_steps(steps)
     return steps
+
+
+def chain_tie_steps(steps: list[dict], max_pairs: int = 16) -> list[dict]:
+    """Collapse runs of consecutive single-tie steps on the same device into
+    quick-multiple-tie `tie_many` steps, so a routing block switches atomically —
+    one switch event / one DVI re-handshake storm instead of one per output.
+    Non-tie steps and lone ties pass through untouched, order preserved.
+    `max_pairs` chunks long runs to stay under SIS command-line length limits
+    (real per-device ceiling is a bench measurement)."""
+    out: list[dict] = []
+    run: list[dict] = []
+
+    def flush() -> None:
+        if len(run) < 2:
+            out.extend(run)
+        else:
+            for i in range(0, len(run), max_pairs):
+                chunk = run[i:i + max_pairs]
+                if len(chunk) == 1:
+                    out.append(chunk[0])
+                else:
+                    out.append({"target": chunk[0]["target"], "action": "tie_many",
+                                "parameters": {"ties": [s["parameters"] for s in chunk]},
+                                "note": f"atomic quick-multiple-tie × {len(chunk)}"})
+        run.clear()
+
+    for step in steps:
+        if step.get("action") == "tie":
+            if run and run[0]["target"] != step["target"]:
+                flush()
+            run.append(step)
+        else:
+            flush()
+            out.append(step)
+    flush()
+    return out
 
 
 # ---- procedural glitch generation ------------------------------------------

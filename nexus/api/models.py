@@ -59,6 +59,9 @@ class VideowallPlanRequest(BaseModel):
     dms_device: str = "device.dms.main"
     matrix_device: str = "device.matrix.main"
     smx_device: str = "device.smx.main"
+    # Collapse DMS routing runs into atomic quick-multiple-tie steps (tie_many).
+    # Only the baseline generator emits tie runs today; harmless elsewhere.
+    chain_ties: bool = False
 
 
 class VideowallScrambleRequest(VideowallPlanRequest):

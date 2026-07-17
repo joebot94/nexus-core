@@ -183,6 +183,39 @@ def test_baseline_steps_shape():
     assert actions.count("tie") == 9 + 3 + 1             # source(9) + returns(3) + out(1)
 
 
+def test_chained_baseline_collapses_dms_runs_atomically():
+    """chain_ties=True turns the 3×3 baseline's 13 sequential DMS ties into
+    tie_many runs (source 9, returns 3 — the lone combiner-out tie rides in the
+    returns run since it's the same device), preserving every route."""
+    from nexus.videowall import baseline_steps, chain_tie_steps
+    plain = baseline_steps(_wall_3x3())
+    chained = baseline_steps(_wall_3x3(), chain_ties=True)
+    assert [s["action"] for s in chained].count("tie_many") == 1
+    assert "tie" not in [s["action"] for s in chained]
+    # Same routes in the same order, whether chained or not.
+    def routes(steps):
+        out = []
+        for s in steps:
+            if s["action"] == "tie":
+                out.append((s["parameters"]["input"], s["parameters"]["output"]))
+            elif s["action"] == "tie_many":
+                out.extend((t["input"], t["output"]) for t in s["parameters"]["ties"])
+        return out
+    assert routes(chained) == routes(plain)
+    # Long runs chunk under the SIS line-length cap.
+    many = [{"target": "d", "action": "tie",
+             "parameters": {"input": i, "output": i}} for i in range(1, 21)]
+    chunked = chain_tie_steps(many, max_pairs=16)
+    assert [s["action"] for s in chunked] == ["tie_many", "tie_many"]
+    assert len(chunked[0]["parameters"]["ties"]) == 16
+    assert len(chunked[1]["parameters"]["ties"]) == 4
+    # Non-tie steps break runs and pass through untouched.
+    mixed = many[:2] + [{"target": "x", "action": "recall_preset",
+                         "parameters": {"preset": 1}}] + many[2:4]
+    kept = chain_tie_steps(mixed)
+    assert [s["action"] for s in kept] == ["tie_many", "recall_preset", "tie_many"]
+
+
 def test_single_mgp_baseline_is_compact():
     from nexus.videowall import WallConfig, baseline_steps
     wall = WallConfig(tiles=4, builder_devices=["device.mgp.1"],

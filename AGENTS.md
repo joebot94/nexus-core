@@ -7,27 +7,37 @@ rules first; the dated directive below is the current marching order.
 
 1. **Stage files by name. Never `git add -A` or `git add .`** Another agent's
    WIP may be in the tree. One lane per commit.
-2. **Never live-fire mutating hardware commands unless Joe is present and
-   watching.** Dry-run everything.
-3. The NAS deployment (nas.joe.bot:8675) runs an older version than this repo.
-   **Do not redeploy to the NAS on your own** — redeploy is coordinated with
-   Joe present.
-4. Keep tests green; new endpoints/generators need tests.
+2. **Live-fire policy (REVISED by Joe, 2026-07-17): live sends are ALLOWED.**
+   Nothing in the glitch rack is harmed by normal commands (recalls, routes,
+   skew, freeze, blank); Joe live-verified preset recall 4 ways. Two rails
+   remain: (a) **destructive resets stay confirm-gated** (ZG/Z000/zap can
+   wipe saved presets and device configs — never automated); (b) unattended
+   runs still prefer dry-run, simply because nobody can see the wall.
+3. **Do not redeploy to the NAS on your own** — redeploy is coordinated with
+   Joe. (The NAS currently runs 0.20.0; repo is 0.21.0.)
+4. Keep tests green; new endpoints/generators need tests. Doc-only wire
+   strings ship `verified=False` until bench-confirmed (truth hierarchy:
+   live-verified code > deployed lab code > docs).
 
-## CURRENT DIRECTIVE — 2026-07-13 (from Joe, via Claude Fable)
+## CURRENT DIRECTIVE — 2026-07-17 (from Joe, via Claude Fable)
 
-The working tree currently has **uncommitted TextWall relay work**
-(`nexus/textwall.py`, `tests/test_textwall_relay.py`, relay routes in
-`nexus/api/routes.py`/`models.py`/`config.py`, docker-compose changes).
-
-- If TextWall is your lane: **finish it, get `tests/test_textwall_relay.py`
-  passing, and commit it as its own commit(s), staged by name.** Do not let
-  this WIP get swept into an unrelated commit or sit dirty across sessions.
-- If it is not your lane: leave those files untouched.
-
-**Do NOT start** new wall-planner/videowall features, SMX adapters, or any
-deploy work. (Update 2026-07-13 evening: Joe approved the Wall Composer
-Phases 1–3 UI; Codex's next lane is the Phase 5 animated preview, which is
-GlitchBoard-side only — nothing new is unblocked in THIS repo beyond the
-TextWall commit above. Latches resolver + SMX signal paths still get a
-Fable design pass first.)
+- **TextWall lane is COMMITTED** (075d76a, v0.20.0 — matches the NAS deploy).
+  The 07-13 "commit the TextWall lane" directive is fulfilled; tree is clean.
+- **v0.21.0 shipped at Joe's direct request:** `tie_many` quick-multiple-tie
+  on DMS 3600 + Matrix 12800 (doc-only wire, `verified=False`), `chain_ties`
+  option on the videowall baseline generator, and
+  `scripts/bench_rate_sweep.py` (operator-graded switching-rate sweeps).
+  See docs/NEXUS-STATUS.md 2026-07-17 and **docs/BENCH-NIGHT.md** — the
+  latter is the single checklist for everything bench-gated.
+- **Open follow-ups, unblocked for whoever picks them up** (tests + status
+  ledger entry required, stage by name):
+  - SMX + MGP chained-command variants — ONLY after someone reads the
+    manuals' SIS chainability notes or bench-tests the wires; do not invent
+    wire strings.
+  - An `overdrive` flag alongside `clamp_rate` in `nexus/videowall.py`
+    (deliberately exceeding a mechanism's clean rate as a stutter effect) —
+    worth building only after bench numbers replace the MECHANISMS
+    placeholders.
+- **Still held:** NAS redeploy (with Joe), destructive-reset automation
+  (never), GlitchBoard-side lanes (see that repo's AGENTS.md — Composer
+  Phase 4b + UX pass await Joe's review; Phase 5 after).

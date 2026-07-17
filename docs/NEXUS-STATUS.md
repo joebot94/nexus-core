@@ -1,6 +1,42 @@
 # Nexus Core — Status (honest ledger)
 
-_Updated: 2026-07-11 (v0.3.0 + bounded hardware-name reads)_
+_Updated: 2026-07-17 (v0.21.0 — atomic quick-multiple-tie + bench sweep tool)_
+
+## 2026-07-17 — quick multiple tie (atomic routing) + the rate-sweep bench tool
+
+**Live-fire policy revision (Joe, 2026-07-17):** normal commands (recalls,
+routes, skew, freeze, blank) are fine to live-fire — the old dry-run-only
+caution is rescinded. Only destructive resets (ZG/Z000/zap family) stay
+confirm-gated, and unattended runs still prefer dry-run because nobody can
+see the wall. Joe has live-verified preset recall 4 ways (desktop+iPad ×
+direct+Nexus). See GlitchBoard/AGENTS.md rule 2.
+
+- **`tie_many` on DMS 3600 + Matrix 12800:** Extron quick multiple tie —
+  `in1*out1*in2*out2...!`, ack `Qik`. Every pair switches in ONE command =
+  one switch event / one DVI re-handshake storm, instead of a sequential
+  handshake per output. This is how big walls route without saved presets:
+  the permutation space of a 4×4 is astronomically too large to store, so
+  scenes stay procedurally generated and the routing block fires atomically.
+  Wire is doc-only (`verified=False`) until the bench pass confirms the ack
+  and the actual atomicity. Capped at 32 pairs/command until the real SIS
+  line-length limit is measured.
+- **`chain_ties` on the videowall baseline:** `POST /wall/videowall/
+  baseline-scene` with `"chain_ties": true` collapses the DMS identity-routing
+  run into `tie_many` steps (`videowall.chain_tie_steps`, chunks at 16 pairs).
+  Default stays off until bench-verified.
+- **NOT chained (needs the manual / bench):** SMX plane-prefixed ties (its
+  syntax family already deviates — `Rpr` not `N.` — so its chained form is
+  not assumed) and MGP `in*win!` window routing (a scaler, not a matrix; its
+  SIS table's chainability column needs reading). Refusing to invent wire
+  strings per the truth-hierarchy rule.
+- **`scripts/bench_rate_sweep.py`:** stdlib-only bench instrument — alternates
+  an A/B command pair at climbing rates (default 0.5→30 Hz) while the operator
+  grades each stage clean / glitchy-cool / broken; writes a JSON report and
+  suggests `MECHANISMS` numbers. Modes: dms-tie, mgp-input, mgp-preset,
+  custom wires. Today only MGP input-remap (~15 Hz) is a real number; DVI
+  crosspoint / analog route / window move are placeholders awaiting this
+  tool. The glitchy-cool band doubles as the future "overdrive" stutter
+  effect range. See docs/BENCH-NIGHT.md for the full session checklist.
 
 ## 2026-07-11 — hardware-stored names, without the giant sweep
 

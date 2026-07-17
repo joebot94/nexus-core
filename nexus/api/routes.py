@@ -528,7 +528,7 @@ def videowall_baseline_scene(request: Request, body: VideowallPlanRequest):
             combiner_device=body.combiner_device, source_device=body.source_device,
             mtpx_devices=body.mtpx_devices, dms_device=body.dms_device,
             matrix_device=body.matrix_device, smx_device=body.smx_device)
-        steps = baseline_steps(wall)
+        steps = baseline_steps(wall, chain_ties=body.chain_ties)
     except VideowallError as exc:
         raise HTTPException(422, str(exc)) from exc
     except ValueError as exc:
